@@ -1,4 +1,6 @@
+import Foundation
 import SwiftUI
+import UIKit
 
 struct ActivityTab: View {
     let sandbox: Sandbox

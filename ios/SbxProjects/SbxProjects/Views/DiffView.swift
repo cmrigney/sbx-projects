@@ -1,4 +1,5 @@
 import SwiftUI
+import UIKit
 
 /// The full diff behind the Changes tab, scrolled to one file.
 struct DiffView: View {

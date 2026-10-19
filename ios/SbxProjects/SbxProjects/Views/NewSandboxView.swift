@@ -1,4 +1,5 @@
 import SwiftUI
+import UIKit
 
 /// The TUI's New sandbox form. It starts with what the project remembers:
 /// its kits, and the model and MCP servers last picked.

@@ -1,4 +1,5 @@
 import SwiftUI
+import UIKit
 
 extension SandboxState {
     var color: Color {

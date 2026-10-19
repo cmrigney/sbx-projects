@@ -1,4 +1,5 @@
 import SwiftUI
+import UIKit
 
 struct SandboxDetailView: View {
     let name: String

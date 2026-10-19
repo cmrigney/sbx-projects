@@ -2,14 +2,9 @@
 
 A SwiftUI app for checking on and messaging the agents that `sbx-projects api` serves from your Mac. It needs iOS 17 and has no package dependencies.
 
-## Setting up the Xcode project
+## Building
 
-The sources are in `Sources/`; the project file isn't checked in yet.
-
-1. In Xcode, choose File › New › Project › iOS › App. Name it `SbxProjects`, with SwiftUI and Swift, no storage and no tests, and save it in this `ios/` folder without a new Git repository.
-2. Delete the template's `ContentView.swift` and `SbxProjectsApp.swift`, then drag `Sources/` into the `SbxProjects` folder in the navigator (as a folder, added to the app target).
-3. In the target's Build Settings, set **Info.plist File** to `Info.plist` (this folder's). Xcode merges it with the keys it generates. It adds Local Network and camera access, Bonjour browsing for `_sbxp._tcp`, local TLS, and the `sbxp://` URL scheme.
-4. Set the deployment target to iOS 17.0.
+Open `SbxProjects/SbxProjects.xcodeproj` in Xcode 26 or later. The app folder is synchronized with the project, so new files in `SbxProjects/SbxProjects/` are built without adding them by hand. `SbxProjects/Info.plist` is merged with the keys Xcode generates; it adds Local Network and camera access, Bonjour browsing for `_sbxp._tcp`, local TLS, and the `sbxp://` URL scheme.
 
 ## Trying it
 
@@ -20,6 +15,8 @@ The sources are in `Sources/`; the project file isn't checked in yet.
 Run the app on a phone on the same Wi-Fi network as the Mac (the simulator can't scan QR codes, but it can pair by picking the Mac under On this network and typing the code). Scanning the QR code with the Camera app works too; it opens the app.
 
 ## How it fits together
+
+Paths are under `SbxProjects/SbxProjects/`.
 
 | File | What it holds |
 |---|---|

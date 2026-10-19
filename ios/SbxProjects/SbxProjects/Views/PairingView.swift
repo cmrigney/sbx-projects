@@ -1,4 +1,5 @@
 import SwiftUI
+import UIKit
 import VisionKit
 
 /// Shown until the iPhone is paired with a Mac.
