@@ -1,0 +1,373 @@
+package api
+
+import (
+	"context"
+	"errors"
+	"fmt"
+	"os/exec"
+	"reflect"
+	"sort"
+	"sync"
+	"time"
+
+	"github.com/cmrigney/sbx-projects/internal/agent"
+	"github.com/cmrigney/sbx-projects/internal/core"
+	"github.com/cmrigney/sbx-projects/internal/sbx"
+	"github.com/cmrigney/sbx-projects/internal/store"
+)
+
+const (
+	probeEvery = 3 * time.Second
+	opTimeout  = 15 * time.Minute
+)
+
+// listEvery is a variable so tests can poll without waiting.
+var listEvery = 3 * time.Second
+
+// Monitor keeps what the TUI keeps for its list, without a terminal: the
+// records, what sbx lists, and a probe of each running sandbox every few
+// seconds. Subscribers hear about every change.
+type Monitor struct {
+	svc *core.Service
+
+	mu       sync.Mutex
+	projects []store.Project
+	recs     map[string]*store.Sandbox
+	live     map[string]sbx.Sandbox
+	listErr  string
+	probes   map[string]*agent.Probe
+	probing  map[string]bool
+	probeAt  map[string]time.Time
+	busy     map[string]string
+	// noProbeUntil holds off probes right after a stop or remove.
+	noProbeUntil map[string]time.Time
+	// sent is the last view of each sandbox subscribers were sent.
+	sent map[string]SandboxView
+	subs map[chan Event]struct{}
+	// kick asks the loop to list again now.
+	kick chan struct{}
+}
+
+func NewMonitor(svc *core.Service) (*Monitor, error) {
+	m := &Monitor{
+		svc:  svc,
+		recs: map[string]*store.Sandbox{}, live: map[string]sbx.Sandbox{},
+		probes: map[string]*agent.Probe{}, probing: map[string]bool{}, probeAt: map[string]time.Time{},
+		busy: map[string]string{}, noProbeUntil: map[string]time.Time{},
+		sent: map[string]SandboxView{}, subs: map[chan Event]struct{}{}, kick: make(chan struct{}, 1),
+	}
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	if err := m.reload(); err != nil {
+		return nil, err
+	}
+	return m, nil
+}
+
+// reload reads projects and records from the store. Probes are kept.
+func (m *Monitor) reload() error {
+	ps, err := m.svc.Store.Projects()
+	if err != nil {
+		return err
+	}
+	m.projects = ps
+	recs, err := m.svc.Store.Sandboxes()
+	if err != nil {
+		return err
+	}
+	m.recs = map[string]*store.Sandbox{}
+	for i := range recs {
+		r := recs[i]
+		m.recs[r.Name] = &r
+		if _, ok := m.probes[r.Name]; !ok && r.LastProbe != "" {
+			p := agent.ParseProbe(r.LastProbe)
+			// A cached probe describes the past; never let it claim the
+			// agent is up right now.
+			p.AgentUp = false
+			m.probes[r.Name] = &p
+		}
+	}
+	return nil
+}
+
+// Run lists and probes until ctx is done.
+func (m *Monitor) Run(ctx context.Context) {
+	t := time.NewTicker(listEvery)
+	defer t.Stop()
+	for {
+		m.list(ctx)
+		select {
+		case <-ctx.Done():
+			return
+		case <-t.C:
+		case <-m.kick:
+		}
+	}
+}
+
+// Refresh lists again soon, as after an action.
+func (m *Monitor) Refresh() {
+	select {
+	case m.kick <- struct{}{}:
+	default:
+	}
+}
+
+func (m *Monitor) list(ctx context.Context) {
+	lctx, cancel := context.WithTimeout(ctx, 20*time.Second)
+	sbxs, err := m.svc.Backend.List(lctx)
+	cancel()
+
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	if err != nil {
+		if errors.Is(err, exec.ErrNotFound) {
+			m.listErr = "sbx is not on your PATH"
+		} else {
+			m.listErr = err.Error()
+		}
+		return
+	}
+	m.listErr = ""
+	m.live = map[string]sbx.Sandbox{}
+	for _, s := range sbxs {
+		m.live[s.Name] = s
+	}
+	// Projects can be added from the TUI while the API runs.
+	if ps, err := m.svc.Store.Projects(); err == nil && !reflect.DeepEqual(ps, m.projects) {
+		m.projects = ps
+		m.broadcast(Event{Type: "projects", Projects: m.projectViews()})
+	}
+	r := m.svc.Reconcile(m.projects, m.recs, sbxs, func(name string) bool { return m.busy[name] != "" })
+	for _, name := range r.Removed {
+		delete(m.recs, name)
+		delete(m.probes, name)
+	}
+	if r.Adopted > 0 {
+		_ = m.reload()
+	}
+
+	now := time.Now()
+	for name, rec := range m.recs {
+		s, ok := m.live[name]
+		if !ok || !s.Running() || m.probing[name] || m.busy[name] != "" || now.Before(m.noProbeUntil[name]) {
+			continue
+		}
+		if now.Sub(m.probeAt[name]) < probeEvery-500*time.Millisecond {
+			continue
+		}
+		m.probe(ctx, name, core.ProjectByID(m.projects, rec.ProjectID).DefaultBranch)
+	}
+	m.publish()
+}
+
+// probe reads the sandbox in the background. Callers hold m.mu.
+func (m *Monitor) probe(ctx context.Context, name, defBranch string) {
+	m.probing[name] = true
+	be := m.svc.Backend
+	go func() {
+		pctx, cancel := context.WithTimeout(ctx, 20*time.Second)
+		raw, err := be.Exec(pctx, name, agent.ProbeScript(defBranch))
+		cancel()
+
+		m.mu.Lock()
+		defer m.mu.Unlock()
+		m.probing[name] = false
+		m.probeAt[name] = time.Now()
+		if err != nil {
+			return
+		}
+		p := agent.ParseProbe(raw)
+		m.probes[name] = &p
+		if rec := m.recs[name]; rec != nil {
+			m.svc.SaveProbe(rec, raw, p)
+		}
+		m.publish()
+	}()
+}
+
+// run runs an action's steps one after another in the background. Each
+// step's busy text is the sandbox's status while it runs. Callers hold m.mu.
+func (m *Monitor) run(name string, steps []core.Step, done string) {
+	m.busy[name] = steps[0].Busy
+	m.publish()
+	go func() {
+		ctx, cancel := context.WithTimeout(context.Background(), opTimeout)
+		defer cancel()
+		var failed error
+		var verb string
+		for i, st := range steps {
+			if i > 0 {
+				m.mu.Lock()
+				m.busy[name] = st.Busy
+				m.publish()
+				m.mu.Unlock()
+			}
+			out, err := st.Run(ctx)
+			if err != nil {
+				failed, verb = err, st.Verb
+				break
+			}
+			if st.Apply != nil {
+				m.mu.Lock()
+				st.Apply(out)
+				m.mu.Unlock()
+			}
+		}
+
+		// List before clearing the busy text, or the sandbox would show
+		// its state from before the action until the next listing.
+		lctx, lcancel := context.WithTimeout(ctx, 20*time.Second)
+		sbxs, lerr := m.svc.Backend.List(lctx)
+		lcancel()
+
+		m.mu.Lock()
+		defer m.mu.Unlock()
+		if lerr == nil {
+			m.live = map[string]sbx.Sandbox{}
+			for _, s := range sbxs {
+				m.live[s.Name] = s
+			}
+		}
+		delete(m.busy, name)
+		if failed != nil {
+			m.broadcast(Event{Type: "action", Name: name, Message: fmt.Sprintf("%s %s failed: %s", verb, name, failed)})
+		} else {
+			m.broadcast(Event{Type: "action", Name: name, OK: true, Message: done})
+			switch steps[len(steps)-1].Verb {
+			case "Stopping", "Removing":
+				// A probe now could land on the sandbox while it is going
+				// away, and sbx exec would start it again.
+				m.noProbeUntil[name] = time.Now().Add(2 * listEvery)
+			default:
+				if rec := m.recs[name]; rec != nil {
+					m.probe(context.Background(), name, core.ProjectByID(m.projects, rec.ProjectID).DefaultBranch)
+				}
+			}
+		}
+		m.publish()
+		m.Refresh()
+	}()
+}
+
+// Subscribe returns a channel of changes, starting with a snapshot of
+// everything. cancel ends the subscription.
+func (m *Monitor) Subscribe() (events <-chan Event, cancel func()) {
+	ch := make(chan Event, 64)
+	m.mu.Lock()
+	ch <- Event{Type: "snapshot", Projects: m.projectViews(), Sandboxes: m.views(), ListError: m.listErr}
+	m.subs[ch] = struct{}{}
+	m.mu.Unlock()
+	return ch, func() {
+		m.mu.Lock()
+		defer m.mu.Unlock()
+		if _, ok := m.subs[ch]; ok {
+			delete(m.subs, ch)
+			close(ch)
+		}
+	}
+}
+
+// broadcast sends ev to every subscriber. A subscriber that has fallen
+// behind is dropped; its client reconnects and starts from a new snapshot.
+// Callers hold m.mu.
+func (m *Monitor) broadcast(ev Event) {
+	for ch := range m.subs {
+		select {
+		case ch <- ev:
+		default:
+			delete(m.subs, ch)
+			close(ch)
+		}
+	}
+}
+
+// publish tells subscribers about every sandbox whose view changed since
+// they were last told. Callers hold m.mu.
+func (m *Monitor) publish() {
+	seen := map[string]bool{}
+	for _, v := range m.views() {
+		seen[v.Name] = true
+		if old, ok := m.sent[v.Name]; ok && reflect.DeepEqual(old, v) {
+			continue
+		}
+		m.sent[v.Name] = v
+		v := v
+		m.broadcast(Event{Type: "sandbox", Sandbox: &v})
+	}
+	for name := range m.sent {
+		if !seen[name] {
+			delete(m.sent, name)
+			m.broadcast(Event{Type: "removed", Name: name})
+		}
+	}
+}
+
+// item is everything the views need about one sandbox, as in the TUI.
+type item struct {
+	rec     *store.Sandbox
+	project store.Project
+	live    sbx.Sandbox
+	listed  bool
+	probe   *agent.Probe
+	status  agent.Status
+	busy    string
+	agentUp bool
+	ws      string
+}
+
+func (it item) running() bool { return it.listed && it.live.Running() }
+
+// item is a sandbox's current state. Callers hold m.mu.
+func (m *Monitor) item(rec *store.Sandbox) item {
+	it := item{rec: rec, project: core.ProjectByID(m.projects, rec.ProjectID), probe: m.probes[rec.Name], busy: m.busy[rec.Name]}
+	it.live, it.listed = m.live[rec.Name]
+	it.ws = it.live.Workspace()
+	if it.ws == "" {
+		it.ws = it.project.Path
+	}
+	probe := it.probe
+	if !it.running() {
+		probe = nil
+	} else if probe != nil {
+		it.agentUp = probe.AgentUp
+	}
+	it.status = agent.Derive(it.running(), probe, rec.Agent, it.ws)
+	if it.busy != "" {
+		it.status = agent.Status{State: agent.StateStarting, Text: it.busy}
+	}
+	return it
+}
+
+// lookup finds a sandbox by name. Callers hold m.mu.
+func (m *Monitor) lookup(name string) (item, bool) {
+	rec := m.recs[name]
+	if rec == nil {
+		return item{}, false
+	}
+	return m.item(rec), true
+}
+
+// views lists every sandbox, newest first. Callers hold m.mu.
+func (m *Monitor) views() []SandboxView {
+	out := make([]SandboxView, 0, len(m.recs))
+	for _, rec := range m.recs {
+		out = append(out, sandboxView(m.item(rec)))
+	}
+	sort.Slice(out, func(i, j int) bool {
+		if out[i].CreatedAt != out[j].CreatedAt {
+			return out[i].CreatedAt > out[j].CreatedAt
+		}
+		return out[i].Name < out[j].Name
+	})
+	return out
+}
+
+// projectViews lists the projects. Callers hold m.mu.
+func (m *Monitor) projectViews() []ProjectView {
+	out := make([]ProjectView, 0, len(m.projects))
+	for _, p := range m.projects {
+		out = append(out, projectView(p))
+	}
+	return out
+}

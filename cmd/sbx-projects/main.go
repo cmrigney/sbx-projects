@@ -19,6 +19,13 @@ import (
 )
 
 func main() {
+	if len(os.Args) > 1 && os.Args[1] == "api" {
+		if err := runAPICmd(os.Args[2:]); err != nil {
+			fmt.Fprintln(os.Stderr, "sbx-projects api:", err)
+			os.Exit(1)
+		}
+		return
+	}
 	defPath, _ := store.DefaultPath()
 	dbPath := flag.String("db", defPath, "path to the projects database")
 	sbxBin := flag.String("sbx", "sbx", "sbx binary to run")
@@ -32,34 +39,11 @@ func main() {
 }
 
 func run(dbPath, sbxBin string, demo bool) error {
-	var be sbx.Backend
-	if demo {
-		dbPath = ":memory:"
-	}
-	st, err := store.Open(dbPath)
+	st, be, err := openBackend(dbPath, sbxBin, demo)
 	if err != nil {
 		return err
 	}
 	defer st.Close()
-
-	if demo {
-		be = seedDemo(st)
-	} else {
-		cli := sbx.NewCLI(sbxBin)
-		if err := cli.Check(); err != nil {
-			return fmt.Errorf("%w; install the sbx CLI or pass --sbx", err)
-		}
-		be = cli
-		ps, err := st.Projects()
-		if err != nil {
-			return err
-		}
-		if len(ps) == 0 {
-			if p := ui.DefaultProjectPath(); p != "" {
-				addIfRepo(st, p)
-			}
-		}
-	}
 
 	start := ui.DefaultProjectPath()
 	if demo {
@@ -71,6 +55,36 @@ func run(dbPath, sbxBin string, demo bool) error {
 	}
 	_, err = tea.NewProgram(m).Run()
 	return err
+}
+
+// openBackend opens the store and sbx, or demo data in memory.
+func openBackend(dbPath, sbxBin string, demo bool) (*store.Store, sbx.Backend, error) {
+	if demo {
+		dbPath = ":memory:"
+	}
+	st, err := store.Open(dbPath)
+	if err != nil {
+		return nil, nil, err
+	}
+	if demo {
+		return st, seedDemo(st), nil
+	}
+	cli := sbx.NewCLI(sbxBin)
+	if err := cli.Check(); err != nil {
+		st.Close()
+		return nil, nil, fmt.Errorf("%w; install the sbx CLI or pass --sbx", err)
+	}
+	ps, err := st.Projects()
+	if err != nil {
+		st.Close()
+		return nil, nil, err
+	}
+	if len(ps) == 0 {
+		if p := ui.DefaultProjectPath(); p != "" {
+			addIfRepo(st, p)
+		}
+	}
+	return st, cli, nil
 }
 
 // addIfRepo seeds the first project from the working directory so a fresh

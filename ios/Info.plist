@@ -1,0 +1,30 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+	<key>NSLocalNetworkUsageDescription</key>
+	<string>sbx-projects connects to sbx-projects api on your Mac over your local network.</string>
+	<key>NSBonjourServices</key>
+	<array>
+		<string>_sbxp._tcp</string>
+	</array>
+	<key>NSCameraUsageDescription</key>
+	<string>The camera scans the pairing code that sbx-projects api shows on your Mac.</string>
+	<key>NSAppTransportSecurity</key>
+	<dict>
+		<key>NSAllowsLocalNetworking</key>
+		<true/>
+	</dict>
+	<key>CFBundleURLTypes</key>
+	<array>
+		<dict>
+			<key>CFBundleURLName</key>
+			<string>pairing</string>
+			<key>CFBundleURLSchemes</key>
+			<array>
+				<string>sbxp</string>
+			</array>
+		</dict>
+	</array>
+</dict>
+</plist>

@@ -12,7 +12,9 @@ import (
 type Reconciled struct {
 	// Removed are records dropped because sbx no longer lists them.
 	Removed []string
-	// Adopted counts sandboxes found inside a project and recorded.
+	// Adopted counts sandboxes found inside a project and recorded, and
+	// sandboxes another sbx-projects process recorded first. Either way the
+	// caller should reload its records.
 	Adopted int
 	// Loose are listed sandboxes that belong to no project.
 	Loose []sbx.Sandbox
@@ -34,8 +36,24 @@ func (s *Service) Reconcile(projects []store.Project, recs map[string]*store.San
 			r.Removed = append(r.Removed, name)
 		}
 	}
+	// stored is loaded the first time a listed sandbox isn't in recs. The
+	// TUI and the API keep their own records, so the other one may have
+	// recorded it, and adopting it would overwrite its title and settings.
+	var stored map[string]bool
 	for _, l := range live {
 		if _, ok := recs[l.Name]; ok {
+			continue
+		}
+		if stored == nil {
+			stored = map[string]bool{}
+			if all, err := s.Store.Sandboxes(); err == nil {
+				for _, rec := range all {
+					stored[rec.Name] = true
+				}
+			}
+		}
+		if stored[l.Name] {
+			r.Adopted++
 			continue
 		}
 		if p := ProjectFor(projects, l.Workspace()); p != nil {

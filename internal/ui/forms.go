@@ -307,12 +307,12 @@ func (f *newForm) cycle(d int) {
 		}
 	case fAgent:
 		i := 0
-		for j, a := range agents {
-			if a.key == f.agent {
+		for j, a := range core.Agents {
+			if a.ID == f.agent {
 				i = j
 			}
 		}
-		f.setAgent(agents[(i+d+len(agents))%len(agents)].key)
+		f.setAgent(core.Agents[(i+d+len(core.Agents))%len(core.Agents)].ID)
 	case fModel:
 		models := core.ModelsFor(f.agent)
 		i := 0
@@ -418,8 +418,8 @@ func (m *Model) modalLines(w int) []Line {
 	L_ = append(L_, L())
 	label("Agent", fAgent, "")
 	var aopts [][2]string
-	for _, a := range agents {
-		aopts = append(aopts, [2]string{a.key, a.label})
+	for _, a := range core.Agents {
+		aopts = append(aopts, [2]string{a.ID, a.Label})
 	}
 	radio(aopts, f.agent, fAgent, f.setAgent)
 	L_ = append(L_, L())

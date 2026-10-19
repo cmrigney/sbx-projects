@@ -217,6 +217,20 @@ func TestReconcile(t *testing.T) {
 	}
 }
 
+func TestReconcileKeepsAnotherProcesssRecord(t *testing.T) {
+	s, mock, p := newTestService(t, []sbx.MockSeed{{Name: "claude-x", Agent: "claude", Workspace: "/src/repo"}})
+	_ = s.Store.UpsertSandbox(store.Sandbox{Name: "claude-x", ProjectID: p.ID, Title: "Fix the thing", Source: "branch", Clone: true})
+	live, _ := mock.List(context.Background())
+	r := s.Reconcile([]store.Project{p}, map[string]*store.Sandbox{}, live, nil)
+	if r.Adopted != 1 {
+		t.Fatalf("the caller should be told to reload: %+v", r)
+	}
+	stored, _ := s.Store.Sandboxes()
+	if len(stored) != 1 || stored[0].Title != "Fix the thing" || stored[0].Source != "branch" || !stored[0].Clone {
+		t.Fatalf("the record was overwritten: %+v", stored)
+	}
+}
+
 func TestSaveProbe(t *testing.T) {
 	s, _, p := newTestService(t, nil)
 	rec := &store.Sandbox{Name: "a", ProjectID: p.ID, Source: "adopted"}

@@ -17,23 +17,7 @@ const wideCols = 104
 
 var spinner = []rune("⠋⠙⠹⠸⠼⠴⠦⠧⠇⠏")
 
-type agentInfo struct{ key, label string }
-
-var agents = []agentInfo{
-	{"claude", "Claude Code"}, {"codex", "Codex"}, {"gemini", "Gemini CLI"}, {"opencode", "opencode"}, {"shell", "Shell"},
-}
-
-func agentLabel(k string) string {
-	for _, a := range agents {
-		if a.key == k {
-			return a.label
-		}
-	}
-	if k == "" {
-		return "Agent"
-	}
-	return k
-}
+func agentLabel(k string) string { return core.AgentLabel(k) }
 
 func stateColor(s agent.State) string {
 	switch s {

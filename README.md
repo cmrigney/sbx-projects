@@ -142,3 +142,37 @@ Sandboxes are created detached, so they keep running until you stop them.
 Other agents only report whether their session is running.
 
 </details>
+
+## iPhone app and the API
+
+`sbx-projects api` serves the same projects and sandboxes over HTTPS on your local network, for the iOS app in [`ios/`](ios/README.md). It runs the TUI's list-and-probe loop without a terminal and goes through the same `internal/core` actions.
+
+```sh
+./sbx-projects api --pair          # serve, and show a code to pair a phone
+./sbx-projects api --demo --pair   # the same against demo data
+./sbx-projects api devices         # list paired phones
+./sbx-projects api devices rm NAME # sign one out
+```
+
+Flags: `--listen` (default `:7443`), `--name` (what the app calls this Mac, the host name by default), `--pair`, and the TUI's `--db`, `--sbx` and `--demo`. Pairing opens by itself while no phone is paired.
+
+- **Pairing.** The terminal shows a QR code and an 8-character code, valid once for 5 minutes. The QR code carries the Mac's addresses and its certificate's fingerprint. Five wrong codes close pairing.
+- **TLS.** The first run makes a self-signed certificate in `~/.local/share/sbx-projects/api/`. Phones pin its SHA-256 fingerprint, so it is never renewed; deleting it means pairing again.
+- **Tokens.** Each phone gets its own token. Only a hash is kept, in `api/devices.json`. `devices rm` takes effect without a restart.
+- **Finding the Mac.** It is advertised over Bonjour as `_sbxp._tcp` (with `dns-sd` on macOS, `avahi-publish-service` on Linux), so the app finds it again when its address changes.
+- **Live updates.** `GET /v1/events` is a server-sent event stream: a snapshot of everything, then each sandbox whose status changes, and how each action ends.
+
+The TUI and the API can run at once. Each probes running sandboxes on its own, and neither overwrites a sandbox the other created. A reply read on the phone stays marked unread in a running TUI until it restarts.
+
+| Endpoint | What it does |
+|---|---|
+| `GET /v1/server`, `POST /v1/pair` | Who this is, and trading a pairing code for a token (no token needed) |
+| `GET /v1/events` | The change stream |
+| `GET /v1/projects`, `GET /v1/sandboxes` | Projects, and every sandbox with its status |
+| `GET /v1/sandboxes/{name}` | One sandbox with its activity, changed files and commits |
+| `GET …/reply`, `POST …/seen` | The last reply as markdown, and clearing its unread mark |
+| `GET …/diff` | The full diff, split by file |
+| `POST …/messages` `{"text"}` | Type a message into the agent's session |
+| `POST …/pr`, `…/stop`, `…/resume`, `…/checkout`; `DELETE /v1/sandboxes/{name}` | The TUI's actions. They answer at once with the sandbox busy; the outcome arrives as an `action` event |
+| `POST /v1/sandboxes` | Create a sandbox, as the New sandbox form does |
+| `GET /v1/options?project=ID` | Agents, models, MCP servers and the project's defaults for that form |

@@ -2,6 +2,29 @@ package core
 
 import "github.com/cmrigney/sbx-projects/internal/store"
 
+// Agent is one agent a sandbox can run.
+type Agent struct {
+	ID, Label string
+}
+
+// Agents are the agents the New sandbox form offers, in its order.
+var Agents = []Agent{
+	{"claude", "Claude Code"}, {"codex", "Codex"}, {"gemini", "Gemini CLI"}, {"opencode", "opencode"}, {"shell", "Shell"},
+}
+
+// AgentLabel is the agent's name in the UI.
+func AgentLabel(id string) string {
+	for _, a := range Agents {
+		if a.ID == id {
+			return a.Label
+		}
+	}
+	if id == "" {
+		return "Agent"
+	}
+	return id
+}
+
 // Model is one choice for an agent's --model. An empty ID leaves the
 // choice to the agent.
 type Model struct {
