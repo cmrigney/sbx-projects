@@ -430,9 +430,8 @@ func checkCreate(req *CreateRequest) error {
 	req.Value = strings.TrimSpace(req.Value)
 	switch req.Source {
 	case "branch":
-		if req.Value == "" {
-			return fail(http.StatusBadRequest, "Name the branch to work on")
-		}
+		// The branch is optional, as in the TUI: without one, the sandbox
+		// is named after the project and stays on the branch it starts on.
 	case "pr":
 		if core.Digits(req.Value) == "0" {
 			return fail(http.StatusBadRequest, "Give the pull request's number or URL")

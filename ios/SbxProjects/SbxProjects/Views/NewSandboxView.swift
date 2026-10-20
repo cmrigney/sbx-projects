@@ -28,7 +28,8 @@ struct NewSandboxView: View {
     private var agentOption: Options.Agent? { options?.agents.first { $0.id == agent } }
 
     private var canCreate: Bool {
-        !creating && options != nil && !value.trimmingCharacters(in: .whitespaces).isEmpty
+        // As in the TUI, only a pull request needs the field filled in.
+        !creating && options != nil && (source != "pr" || !value.trimmingCharacters(in: .whitespaces).isEmpty)
     }
 
     var body: some View {
@@ -53,7 +54,7 @@ struct NewSandboxView: View {
                     }
                     .pickerStyle(.segmented)
                     .labelsHidden()
-                    TextField(source == "branch" ? "Branch, like feat/policy-log-json" : "PR number or URL", text: $value)
+                    TextField(source == "branch" ? "Branch (optional), like feat/policy-log-json" : "PR number or URL", text: $value)
                         .font(.body.monospaced())
                         .textInputAutocapitalization(.never)
                         .autocorrectionDisabled()
