@@ -1,0 +1,93 @@
+package core
+
+import (
+	"time"
+
+	"github.com/cmrigney/sbx-projects/internal/agent"
+	"github.com/cmrigney/sbx-projects/internal/sbx"
+	"github.com/cmrigney/sbx-projects/internal/store"
+)
+
+// Reconciled is what Reconcile changed.
+type Reconciled struct {
+	// Removed are records dropped because sbx no longer lists them.
+	Removed []string
+	// Adopted counts sandboxes found inside a project and recorded.
+	Adopted int
+	// Loose are listed sandboxes that belong to no project.
+	Loose []sbx.Sandbox
+}
+
+// Reconcile brings the store in line with what sbx lists: records of
+// sandboxes that are gone are dropped, unless keep says they are being
+// worked on, and sandboxes whose workspace is inside a project are adopted.
+// recs is read, not changed.
+func (s *Service) Reconcile(projects []store.Project, recs map[string]*store.Sandbox, live []sbx.Sandbox, keep func(name string) bool) Reconciled {
+	var r Reconciled
+	listed := map[string]bool{}
+	for _, l := range live {
+		listed[l.Name] = true
+	}
+	for name := range recs {
+		if !listed[name] && (keep == nil || !keep(name)) {
+			_ = s.Store.RemoveSandbox(name)
+			r.Removed = append(r.Removed, name)
+		}
+	}
+	for _, l := range live {
+		if _, ok := recs[l.Name]; ok {
+			continue
+		}
+		if p := ProjectFor(projects, l.Workspace()); p != nil {
+			rec := store.Sandbox{Name: l.Name, ProjectID: p.ID, Title: l.Name, Agent: l.Agent, Source: "adopted"}
+			if l.CreatedAt != nil {
+				rec.CreatedAt = *l.CreatedAt
+			}
+			if err := s.Store.UpsertSandbox(rec); err == nil {
+				r.Adopted++
+			}
+			continue
+		}
+		r.Loose = append(r.Loose, l)
+	}
+	return r
+}
+
+// SaveProbe keeps the probe for when the sandbox is stopped, and updates
+// what the probe says about the record: its branch, and for adopted
+// sandboxes, whether it is a private clone.
+func (s *Service) SaveProbe(rec *store.Sandbox, raw string, p agent.Probe) {
+	if rec.LastProbe != raw {
+		rec.LastProbe = raw
+		_ = s.Store.SaveProbe(rec.Name, raw, time.Now())
+	}
+	changed := false
+	if p.Branch != "" && p.Branch != rec.Branch {
+		rec.Branch, changed = p.Branch, true
+	}
+	// Only sandboxes made outside this app have an unknown workspace mode.
+	if rec.Source == "adopted" && p.Clone != rec.Clone {
+		rec.Clone, changed = p.Clone, true
+	}
+	if changed {
+		_ = s.Store.UpsertSandbox(*rec)
+	}
+}
+
+// Unread reports whether the agent has replied since the user last read
+// its reply or attached.
+func Unread(rec *store.Sandbox, p *agent.Probe) bool {
+	return rec != nil && p != nil && p.Recap != nil && p.Recap.When.After(rec.SeenAt)
+}
+
+// MarkSeen records that the user has read everything the agent has said
+// so far. The reply's own time is used when it is later than now, as it
+// comes from the sandbox's clock.
+func (s *Service) MarkSeen(rec *store.Sandbox, p *agent.Probe) {
+	at := time.Now()
+	if p != nil && p.Recap != nil && p.Recap.When.After(at) {
+		at = p.Recap.When
+	}
+	rec.SeenAt = at
+	_ = s.Store.SetSeen(rec.Name, at)
+}

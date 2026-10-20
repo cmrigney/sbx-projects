@@ -1,0 +1,58 @@
+# sbx-projects
+
+A terminal UI for running coding agents in sandboxes through the `sbx` CLI, organised by project.
+
+A **project** is a git repository. Each project can have several sandboxes, usually one per feature, each on its own private clone and branch. Projects and the sandboxes attached to them are kept in SQLite at `~/.local/share/sbx-projects/projects.db` (or `$XDG_DATA_HOME/sbx-projects/`).
+
+```sh
+go build -o sbx-projects ./cmd/sbx-projects
+./sbx-projects            # run from inside a repo to add it as your first project
+./sbx-projects --demo     # built-in demo data, no sbx needed
+```
+
+The demo uses fictional activity for public projects from cmrigney: [skill-share](https://github.com/cmrigney/skill-share), [wasm-docker-extension](https://github.com/cmrigney/wasm-docker-extension), and [node-sftp-s3](https://github.com/cmrigney/node-sftp-s3).
+
+Flags: `--db PATH`, `--sbx PATH` (the sbx binary), `--demo`.
+
+## How it works
+
+Everything goes through the `sbx` CLI.
+
+| Action | What runs |
+|---|---|
+| Create | `sbx run -d --name N [--clone] [--kit REF]... [--static-mcp NAME,...] AGENT PATH`, then `git checkout -b BRANCH` (or `gh pr checkout N`) in the clone, then the agent starts |
+| Start agent | tmux on a private socket (`tmux -L sbxp`) inside the sandbox runs sbx's own `start-agent` launcher, so the agent keeps working with nothing attached |
+| Attach (`enter`) | `sbx exec -it N tmux -u -L sbxp attach -t agent` (adding `-T RGB` when your terminal sets `COLORTERM=truecolor`). Press `ctrl-b d` to come back |
+| Message (`i`), Open PR (`p`) | Your text is typed into the agent's session with `tmux send-keys` |
+| Check out locally (`c`) | On a private clone, `git fetch sandbox-N` then `git checkout -B BRANCH sandbox-N/BRANCH` in the project. sandboxd configures that remote automatically while the sandbox is running. |
+| Open in IDE (`o`) | On a private clone, `cursor --remote ssh-remote+N.sbx WORKSPACE` (or `code`, or whatever `$SBXP_IDE` names), the same as Remote-SSH: Connect to Host with sbx's `N.sbx` host |
+| Status, activity, changes | One `sbx exec` every few seconds per *running* sandbox reads the event log, `git log` and `git diff --numstat` against the project's default branch |
+| Stop / resume / remove | `sbx stop`, `sbx run -d --name N` then the agent with `--continue`, `sbx rm -f` (after `sbx stop` if it is running) |
+
+Sandboxes are created detached, so they keep running until you stop them.
+
+**Default kits.** Press `K` to set the kits every new sandbox in the current project starts with. Each reference (a directory, ZIP, git URL or OCI image) must be a mixin, and is passed to `sbx run` as its own `--kit`. The New sandbox form starts with the project's kits filled in, so you can add or drop kits for one sandbox. Changing the defaults doesn't touch existing sandboxes. The Setup tab shows the kits each sandbox was created with.
+
+**MCP servers.** The New sandbox form lists the MCP servers registered on your host (`sbx mcp ls --json`). Move along the row with ←→ and press space to pick a server; picked servers are passed to `sbx run` as `--static-mcp`. sbx fixes that set when the sandbox is created, so it can't be changed later from here. Servers that can't connect yet show why (for example "needs auth"), and the form names the command that fixes the one under the cursor. Register servers with `sbx mcp add` on your host. The form starts with the servers you last picked in the project, and the Setup tab shows the ones each sandbox was created with.
+
+**Agent model.** When the agent is Claude Code or Codex, the New sandbox form has a Model row. Claude offers Default, Opus, Sonnet and Haiku; Codex offers Default and OpenAI's recommended Codex models. The agent starts with `--model` set to that choice, and keeps it whenever it starts or resumes; Default passes no flag. The form remembers the last model picked for each agent in the project.
+
+**Folded rows.** The New sandbox form folds the Model, Kits and MCP servers rows into one line that sums up what the sandbox will get (for example "Opus model · 2 kits · notion"). Tab to it and press space, or click it, to show the rows.
+
+**Open in editor.** `e` opens the project in your IDE. It uses `$SBX_PROJECTS_EDITOR` if it's set (for example `export SBX_PROJECTS_EDITOR="code -n"`). Otherwise it uses the first IDE launcher it finds on `PATH` (`cursor`, `code`, `zed`, `windsurf`, `goland`, `idea`, `subl`). On macOS it also checks for those apps in `/Applications` and opens them with `open -a`. If no IDE turns up, it uses `$VISUAL` or `$EDITOR` in the terminal, and then the system file opener.
+
+**Claude Code and Codex status** comes from hooks. Each hook appends a line to `~/.sbx-projects/events.jsonl` inside the sandbox. sbx rewrites both agents' own config files, so neither is touched:
+
+- **Claude Code** is launched with `--settings ~/.sbx-projects/claude-settings.json`, which adds hooks for `SessionStart`, `UserPromptSubmit`, `PreToolUse`, `PostToolUseFailure`, `Notification`, `Stop`, `StopFailure` and `SessionEnd`.
+- **Codex** gets its hooks as a `-c hooks={…}` override plus `--dangerously-bypass-hook-trust`, which hooks from overrides need in order to run. Its events are `SessionStart`, `UserPromptSubmit`, `PreToolUse`, `PostToolUse`, `PermissionRequest`, `Stop`, `Interrupt` and `SessionEnd`. The hook reads the files out of `apply_patch` patches, and looks up a failed shell command's exit code in Codex's session log, because Codex's `PostToolUse` carries only the output. The workspace is also pre-trusted with `-c projects={…}`, as sbx does for Claude, so Codex doesn't stop at its trust prompt. Codex versions without `--dangerously-bypass-hook-trust` start without hooks.
+
+Other agents only report whether their session is running.
+
+Press `t` to read the agent's last reply in full without attaching. The Stop hook saves the whole end-of-turn message to `~/.sbx-projects/last-turn.txt`, and the TUI shows it in a pop-up with markdown simplified for the terminal. A sandbox gets the hook that saves replies the next time its agent starts. A reply you haven't read yet puts an orange `●` next to the sandbox in the list, makes its title bold, and changes the hint to "New reply". Pressing `t` or attaching clears it.
+
+## Requirements and limits
+
+- tmux is installed with `apt-get` the first time an agent starts in a sandbox. That needs the Ubuntu archive to be reachable under your network policy.
+- Sandboxes whose workspace is inside a project are adopted automatically. If an adopted sandbox's agent was started with plain `sbx run`, the TUI doesn't see it. Attaching starts a second agent in tmux.
+- Changes for a stopped sandbox show what was last seen while it was running. Probing a stopped sandbox would start it.
+- Open PR asks the agent to push and run `gh pr create`. This needs a GitHub token stored with `sbx secret set github`.

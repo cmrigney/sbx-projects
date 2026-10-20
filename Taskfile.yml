@@ -1,0 +1,15 @@
+version: "3"
+
+tasks:
+  default:
+    deps: [build]
+
+  build:
+    desc: Build the sbx-projects binary
+    cmds:
+      - go build -o sbx-projects ./cmd/sbx-projects
+
+  tidy:
+    desc: Tidy go.mod/go.sum
+    cmds:
+      - go mod tidy
