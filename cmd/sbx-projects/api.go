@@ -165,7 +165,10 @@ func showPairing(devices *api.Devices, srv *api.Server, fp string, addrs []strin
 }
 
 // printQR draws the code with half blocks, two modules per character, in
-// black on white so it scans on dark and light terminals alike.
+// black on white so it scans on dark and light terminals alike. A cell whose
+// two modules match is a space on that background rather than a half block in
+// the same color as its background: terminals that enforce a minimum contrast
+// (VS Code, iTerm2) would otherwise recolor the glyph and smear the code.
 func printQR(c *qr.Code) {
 	const quiet = 2
 	black := func(x, y int) bool {
@@ -175,14 +178,17 @@ func printQR(c *qr.Code) {
 	for y := -quiet; y < c.Size+quiet; y += 2 {
 		b.WriteString("  ")
 		for x := -quiet; x < c.Size+quiet; x++ {
-			fg, bg := "97", "107"
-			if black(x, y) {
-				fg = "30"
+			top, bottom := black(x, y), black(x, y+1)
+			switch {
+			case top && bottom:
+				b.WriteString("\x1b[40m ")
+			case !top && !bottom:
+				b.WriteString("\x1b[107m ")
+			case top:
+				b.WriteString("\x1b[30;107m▀")
+			default:
+				b.WriteString("\x1b[97;40m▀")
 			}
-			if black(x, y+1) {
-				bg = "40"
-			}
-			fmt.Fprintf(&b, "\x1b[%s;%sm▀", fg, bg)
 		}
 		b.WriteString("\x1b[0m\n")
 	}
