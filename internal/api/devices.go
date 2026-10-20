@@ -176,6 +176,20 @@ func (d *Devices) Authenticate(token string) (Device, bool) {
 	return Device{}, false
 }
 
+// Has says whether the device is still paired, noticing a removal by
+// another process.
+func (d *Devices) Has(id string) bool {
+	d.mu.Lock()
+	defer d.mu.Unlock()
+	d.reload()
+	for _, dev := range d.list {
+		if dev.ID == id {
+			return true
+		}
+	}
+	return false
+}
+
 // Remove forgets the device with the given ID or name, signing it out.
 func (d *Devices) Remove(idOrName string) (Device, error) {
 	d.mu.Lock()

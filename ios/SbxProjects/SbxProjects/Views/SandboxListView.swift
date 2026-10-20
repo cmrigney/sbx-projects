@@ -143,7 +143,16 @@ struct ConnectionBanner: View {
         default:
             if let error = app.listError {
                 Section {
-                    Label(error, systemImage: "exclamationmark.triangle").foregroundStyle(.secondary)
+                    Label {
+                        VStack(alignment: .leading, spacing: 2) {
+                            Text("Can't list sandboxes on \(app.server?.name ?? "the Mac")").font(.subheadline.weight(.semibold))
+                            Text("The states below may be out of date. \(error)")
+                                .font(.footnote)
+                                .foregroundStyle(.secondary)
+                        }
+                    } icon: {
+                        Image(systemName: "exclamationmark.triangle").foregroundStyle(.orange)
+                    }
                 }
             }
         }

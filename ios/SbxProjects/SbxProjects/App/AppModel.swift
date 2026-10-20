@@ -122,6 +122,10 @@ final class AppModel {
             }
         case "projects":
             projects = event.projects ?? projects
+        case "status":
+            // Sent when listing on the Mac starts or stops failing; until it
+            // clears, the states shown are the last ones seen.
+            listError = event.listError
         case "action":
             if let name = event.name, pending.remove(name) != nil || event.ok != true {
                 toast = Toast(message: event.message ?? "", ok: event.ok == true)

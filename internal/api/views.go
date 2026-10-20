@@ -13,13 +13,16 @@ import (
 
 // Event is one line of the /v1/events stream.
 type Event struct {
-	// Type is "snapshot", "sandbox", "removed", "projects" or "action".
+	// Type is "snapshot", "sandbox", "removed", "projects", "status" or
+	// "action".
 	Type string `json:"type"`
 	// Projects and Sandboxes are everything, on "snapshot"; Projects alone
 	// on "projects".
 	Projects  []ProjectView `json:"projects,omitempty"`
 	Sandboxes []SandboxView `json:"sandboxes,omitempty"`
-	// ListError is why sbx couldn't list sandboxes, on "snapshot".
+	// ListError is why sbx couldn't list sandboxes, on "snapshot" and on
+	// "status", which is sent whenever it starts or stops failing. Left out
+	// once listing works again.
 	ListError string `json:"listError,omitempty"`
 	// Sandbox is the new view of one sandbox, on "sandbox".
 	Sandbox *SandboxView `json:"sandbox,omitempty"`

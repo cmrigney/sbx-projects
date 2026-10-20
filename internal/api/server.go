@@ -92,13 +92,22 @@ func readJSON(r *http.Request, v any) error {
 func (s *Server) auth(h http.HandlerFunc) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		token, _ := strings.CutPrefix(r.Header.Get("Authorization"), "Bearer ")
-		if _, ok := s.Devices.Authenticate(token); !ok {
+		dev, ok := s.Devices.Authenticate(token)
+		if !ok {
 			writeErr(w, fail(http.StatusUnauthorized, "This device isn't paired with %s. Pair it again with sbx-projects api --pair.", s.Name))
 			return
 		}
-		h(w, r)
+		h(w, r.WithContext(context.WithValue(r.Context(), deviceKey{}, dev.ID)))
 	})
 }
+
+// deviceKey holds the ID of the device a request authenticated as.
+type deviceKey struct{}
+
+// recheckEvery is how often an open event stream checks that its device is
+// still paired, so signing a phone out also ends the stream it has open.
+// It is a variable so tests need not wait.
+var recheckEvery = 5 * time.Second
 
 func (s *Server) server(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, map[string]any{"id": s.ID, "name": s.Name, "version": Version, "pairing": s.Devices.Pairing()})
@@ -129,7 +138,10 @@ func (s *Server) pair(w http.ResponseWriter, r *http.Request) {
 // events streams changes as server-sent events. Each event is a single
 // "data:" line of JSON, so clients that read line by line need not track
 // the blank lines between events. The first is a snapshot of everything.
+// The stream ends when its device is signed out; the client's reconnect is
+// then refused.
 func (s *Server) events(w http.ResponseWriter, r *http.Request) {
+	device, _ := r.Context().Value(deviceKey{}).(string)
 	rc := http.NewResponseController(w)
 	_ = rc.SetWriteDeadline(time.Time{})
 	w.Header().Set("Content-Type", "text/event-stream")
@@ -141,10 +153,17 @@ func (s *Server) events(w http.ResponseWriter, r *http.Request) {
 	defer cancel()
 	ping := time.NewTicker(15 * time.Second)
 	defer ping.Stop()
+	recheck := time.NewTicker(recheckEvery)
+	defer recheck.Stop()
 	for {
 		select {
 		case <-r.Context().Done():
 			return
+		case <-recheck.C:
+			if !s.Devices.Has(device) {
+				return
+			}
+			continue
 		case <-ping.C:
 			if _, err := fmt.Fprint(w, ": ping\n\n"); err != nil {
 				return

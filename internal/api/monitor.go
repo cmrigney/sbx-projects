@@ -36,7 +36,7 @@ type Monitor struct {
 	live     map[string]sbx.Sandbox
 	listErr  string
 	probes   map[string]*agent.Probe
-	probing  map[string]bool
+	probing  map[string]*probeRun
 	probeAt  map[string]time.Time
 	busy     map[string]string
 	// noProbeUntil holds off probes right after a stop or remove.
@@ -52,7 +52,7 @@ func NewMonitor(svc *core.Service) (*Monitor, error) {
 	m := &Monitor{
 		svc:  svc,
 		recs: map[string]*store.Sandbox{}, live: map[string]sbx.Sandbox{},
-		probes: map[string]*agent.Probe{}, probing: map[string]bool{}, probeAt: map[string]time.Time{},
+		probes: map[string]*agent.Probe{}, probing: map[string]*probeRun{}, probeAt: map[string]time.Time{},
 		busy: map[string]string{}, noProbeUntil: map[string]time.Time{},
 		sent: map[string]SandboxView{}, subs: map[chan Event]struct{}{}, kick: make(chan struct{}, 1),
 	}
@@ -120,15 +120,22 @@ func (m *Monitor) list(ctx context.Context) {
 
 	m.mu.Lock()
 	defer m.mu.Unlock()
+	listErr := ""
+	switch {
+	case errors.Is(err, exec.ErrNotFound):
+		listErr = "sbx is not on your PATH"
+	case err != nil:
+		listErr = err.Error()
+	}
+	if listErr != m.listErr {
+		// Clients show it over the list, whose states are stale until it
+		// clears.
+		m.listErr = listErr
+		m.broadcast(Event{Type: "status", ListError: listErr})
+	}
 	if err != nil {
-		if errors.Is(err, exec.ErrNotFound) {
-			m.listErr = "sbx is not on your PATH"
-		} else {
-			m.listErr = err.Error()
-		}
 		return
 	}
-	m.listErr = ""
 	m.live = map[string]sbx.Sandbox{}
 	for _, s := range sbxs {
 		m.live[s.Name] = s
@@ -150,7 +157,7 @@ func (m *Monitor) list(ctx context.Context) {
 	now := time.Now()
 	for name, rec := range m.recs {
 		s, ok := m.live[name]
-		if !ok || !s.Running() || m.probing[name] || m.busy[name] != "" || now.Before(m.noProbeUntil[name]) {
+		if !ok || !s.Running() || m.probing[name] != nil || m.busy[name] != "" || now.Before(m.noProbeUntil[name]) {
 			continue
 		}
 		if now.Sub(m.probeAt[name]) < probeEvery-500*time.Millisecond {
@@ -161,18 +168,29 @@ func (m *Monitor) list(ctx context.Context) {
 	m.publish()
 }
 
+// probeRun is a probe in flight. Stopping or removing a sandbox waits it
+// out first: sbx exec starts a stopped sandbox, so an exec that reached
+// the sandbox after the stop would start it again.
+type probeRun struct {
+	cancel context.CancelFunc
+	done   chan struct{}
+}
+
 // probe reads the sandbox in the background. Callers hold m.mu.
 func (m *Monitor) probe(ctx context.Context, name, defBranch string) {
-	m.probing[name] = true
+	pctx, cancel := context.WithTimeout(ctx, 20*time.Second)
+	run := &probeRun{cancel: cancel, done: make(chan struct{})}
+	m.probing[name] = run
 	be := m.svc.Backend
 	go func() {
-		pctx, cancel := context.WithTimeout(ctx, 20*time.Second)
+		// Closed after the lock below is released, so a waiter can take it.
+		defer close(run.done)
 		raw, err := be.Exec(pctx, name, agent.ProbeScript(defBranch))
 		cancel()
 
 		m.mu.Lock()
 		defer m.mu.Unlock()
-		m.probing[name] = false
+		delete(m.probing, name)
 		m.probeAt[name] = time.Now()
 		if err != nil {
 			return
@@ -186,6 +204,28 @@ func (m *Monitor) probe(ctx context.Context, name, defBranch string) {
 	}()
 }
 
+// drainProbe cancels the sandbox's probe in flight, if there is one, and
+// waits for it to finish. Being busy keeps new probes from starting.
+func (m *Monitor) drainProbe(name string) {
+	m.mu.Lock()
+	run := m.probing[name]
+	m.mu.Unlock()
+	if run != nil {
+		run.cancel()
+		<-run.done
+	}
+}
+
+// stops says whether an action stops the sandbox.
+func stops(steps []core.Step) bool {
+	for _, st := range steps {
+		if st.Verb == "Stopping" || st.Verb == "Removing" {
+			return true
+		}
+	}
+	return false
+}
+
 // run runs an action's steps one after another in the background. Each
 // step's busy text is the sandbox's status while it runs. Callers hold m.mu.
 func (m *Monitor) run(name string, steps []core.Step, done string) {
@@ -194,6 +234,9 @@ func (m *Monitor) run(name string, steps []core.Step, done string) {
 	go func() {
 		ctx, cancel := context.WithTimeout(context.Background(), opTimeout)
 		defer cancel()
+		if stops(steps) {
+			m.drainProbe(name)
+		}
 		var failed error
 		var verb string
 		for i, st := range steps {
