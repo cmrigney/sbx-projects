@@ -127,7 +127,10 @@ nonisolated final class APIClient: Sendable {
                     // The server pings every 15 seconds, so a longer silence
                     // means the connection is gone.
                     req.timeoutInterval = 45
-                    let (bytes, response) = try await self.session.bytes(for: req)
+                    // The delegate goes in again for this task: bytes(for:)
+                    // doesn't ask the session's delegate about the server's
+                    // certificate, so without it the self-signed one fails.
+                    let (bytes, response) = try await self.session.bytes(for: req, delegate: self.pin)
                     try self.check(response, data: nil)
                     let decoder = Self.decoder()
                     for try await line in bytes.lines {
@@ -211,7 +214,9 @@ nonisolated final class APIClient: Sendable {
 
 /// Checks the server's certificate against the pinned fingerprint, the
 /// SHA-256 of its DER encoding in lowercase hex, as the Mac prints it.
-nonisolated final class PinningDelegate: NSObject, URLSessionDelegate, @unchecked Sendable {
+/// It answers both the session's challenges and a task's, since some
+/// tasks only ask their own delegate.
+nonisolated final class PinningDelegate: NSObject, URLSessionTaskDelegate, @unchecked Sendable {
     private let expected: String?
     private let lock = NSLock()
     private var _seen: String?
@@ -227,6 +232,16 @@ nonisolated final class PinningDelegate: NSObject, URLSessionDelegate, @unchecke
     func urlSession(_ session: URLSession, didReceive challenge: URLAuthenticationChallenge) async
         -> (URLSession.AuthChallengeDisposition, URLCredential?)
     {
+        evaluate(challenge)
+    }
+
+    func urlSession(_ session: URLSession, task: URLSessionTask, didReceive challenge: URLAuthenticationChallenge) async
+        -> (URLSession.AuthChallengeDisposition, URLCredential?)
+    {
+        evaluate(challenge)
+    }
+
+    private func evaluate(_ challenge: URLAuthenticationChallenge) -> (URLSession.AuthChallengeDisposition, URLCredential?) {
         guard challenge.protectionSpace.authenticationMethod == NSURLAuthenticationMethodServerTrust,
               let trust = challenge.protectionSpace.serverTrust,
               let chain = SecTrustCopyCertificateChain(trust) as? [SecCertificate],
