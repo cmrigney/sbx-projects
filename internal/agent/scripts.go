@@ -298,8 +298,10 @@ tmux -L %[1]s send-keys -t %[2]s Enter
 
 // GitSetupScript puts a fresh clone on the branch the user asked for. A new
 // branch starts from the default branch, not from whatever the host had
-// checked out when the clone was made. It doesn't track the default branch,
-// so a later push goes to a branch of its own name.
+// checked out when the clone was made. The remote's HEAD wins over
+// defaultBranch, which is only the host's guess and goes stale when its
+// origin/HEAD does. It doesn't track the default branch, so a later push
+// goes to a branch of its own name.
 func GitSetupScript(source, value, defaultBranch string) string {
 	enc := base64.StdEncoding.EncodeToString([]byte(value))
 	switch source {
@@ -312,6 +314,8 @@ DEF=%s
 if git rev-parse -q --verify "refs/heads/$v" >/dev/null; then
   git checkout "$v" 1>&2
 else
+  r=$(GIT_TERMINAL_PROMPT=0 git ls-remote --symref origin HEAD 2>/dev/null | awk '$1 == "ref:" && $3 == "HEAD" { sub("^refs/heads/", "", $2); print $2 }') || true
+  if [ -n "$r" ]; then DEF=$r; fi
   GIT_TERMINAL_PROMPT=0 git fetch -q origin "$DEF" 1>&2 || true
   base=""
   for b in "origin/$DEF" "$DEF"; do

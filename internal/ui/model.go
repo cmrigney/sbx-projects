@@ -1030,8 +1030,6 @@ func inspectRepo(path string, mock bool) (store.Project, error) {
 	}
 	if h, err := gitOut(root, "symbolic-ref", "--short", "refs/remotes/origin/HEAD"); err == nil {
 		p.DefaultBranch = strings.TrimPrefix(h, "origin/")
-	} else if b, err := gitOut(root, "branch", "--show-current"); err == nil && b != "" {
-		p.DefaultBranch = b
 	}
 	return p, nil
 }

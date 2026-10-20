@@ -532,3 +532,40 @@ func TestDiffScriptMatchesTheNumstat(t *testing.T) {
 		t.Errorf("a.txt lines = %q", files[0].Lines)
 	}
 }
+
+func TestGitSetupScriptBranchesFromRemoteHead(t *testing.T) {
+	if _, err := exec.LookPath("git"); err != nil {
+		t.Skip("git not installed")
+	}
+	dir := t.TempDir()
+	git := func(wd string, args ...string) string {
+		t.Helper()
+		cmd := exec.Command("git", append([]string{"-C", wd, "-c", "user.name=t", "-c", "user.email=t@t", "-c", "init.defaultBranch=main"}, args...)...)
+		out, err := cmd.CombinedOutput()
+		if err != nil {
+			t.Fatalf("git %v: %v\n%s", args, err, out)
+		}
+		return strings.TrimSpace(string(out))
+	}
+	remote, host := filepath.Join(dir, "remote"), filepath.Join(dir, "host")
+	git(dir, "init", "-q", remote)
+	git(remote, "commit", "-q", "--allow-empty", "-m", "on main")
+	git(remote, "checkout", "-q", "-b", "feat")
+	git(remote, "commit", "-q", "--allow-empty", "-m", "on feat")
+	git(remote, "checkout", "-q", "main")
+	git(dir, "clone", "-q", remote, host)
+	git(host, "checkout", "-q", "feat")
+	// The host's origin/HEAD has gone stale and the project remembered it.
+	git(host, "remote", "set-head", "origin", "feat")
+	cmd := exec.Command("bash", "-c", GitSetupScript("branch", "fix/thing", "feat"))
+	cmd.Dir = host
+	if out, err := cmd.CombinedOutput(); err != nil {
+		t.Fatalf("setup script: %v\n%s", err, out)
+	}
+	if got := git(host, "branch", "--show-current"); got != "fix/thing" {
+		t.Fatalf("on %q, want fix/thing", got)
+	}
+	if got, want := git(host, "rev-parse", "HEAD"), git(remote, "rev-parse", "main"); got != want {
+		t.Fatalf("new branch starts at %s, want main's %s", got, want)
+	}
+}
