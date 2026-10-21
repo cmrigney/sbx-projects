@@ -842,7 +842,11 @@ func (m *Model) create(f *newForm) tea.Cmd {
 	if len(core.ModelsFor(f.agent)) > 0 {
 		req.Model = f.model
 	}
-	rec, steps, err := m.svc.Create(p, req, func(name string) bool { _, ok := m.live[name]; return ok })
+	rec, steps, err := m.svc.Create(p, req, func(name string) bool {
+		_, live := m.live[name]
+		_, rec := m.recs[name]
+		return live || rec
+	})
 	if err != nil {
 		return m.say("Could not save the sandbox: "+err.Error(), cBad)
 	}

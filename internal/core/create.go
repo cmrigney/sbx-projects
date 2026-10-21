@@ -32,10 +32,20 @@ type CreateRequest struct {
 
 // Create records a new sandbox and returns the steps that make it: sbx
 // run, then the branch in a private clone, then the agent. taken reports
-// sandbox names already in use. p is updated with what the project
+// sandbox names already in use besides those on record. p is updated with what the project
 // remembers for next time.
 func (s *Service) Create(p *store.Project, r CreateRequest, taken func(string) bool) (*store.Sandbox, []Step, error) {
-	name := uniqueName(SandboxName(r.Agent, p.Name, r.Source, r.Value), r.Agent, p.Name, taken)
+	recs, err := s.Store.Sandboxes()
+	if err != nil {
+		return nil, nil, err
+	}
+	used := map[string]bool{}
+	for _, sb := range recs {
+		used[sb.Name] = true
+	}
+	name := uniqueName(SandboxName(r.Agent, p.Name, r.Source, r.Value), func(n string) bool {
+		return used[n] || (taken != nil && taken(n))
+	})
 	branch := strings.TrimSpace(r.Value)
 	title := strings.TrimSpace(r.Task)
 	switch {

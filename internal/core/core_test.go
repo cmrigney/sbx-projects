@@ -54,9 +54,12 @@ func TestSandboxName(t *testing.T) {
 			t.Errorf("SandboxName(%q, %q) = %q, want %q", c.source, c.value, got, c.want)
 		}
 	}
-	taken := func(n string) bool { return n == "claude-x" }
-	if got := uniqueName("claude-x", "claude", "api", taken); got != "claude-api-x" {
-		t.Errorf("a taken name should gain the project: %q", got)
+	taken := func(n string) bool { return n == "claude-x" || n == "claude-x-2" }
+	if got := uniqueName("claude-x", taken); got != "claude-x-3" {
+		t.Errorf("a taken name should gain the next free number: %q", got)
+	}
+	if got := uniqueName("claude-y", taken); got != "claude-y" {
+		t.Errorf("a free name should be kept: %q", got)
 	}
 }
 
@@ -104,6 +107,30 @@ func TestCreateRunsTheWholeChain(t *testing.T) {
 	recs, _ := s.Store.Sandboxes()
 	if len(recs) != 1 || recs[0].Branch != "pr/12" {
 		t.Fatalf("stored = %+v", recs)
+	}
+}
+
+func TestCreateNumbersATakenName(t *testing.T) {
+	s, _, p := newTestService(t, nil)
+	first, _, err := s.Create(&p, CreateRequest{Agent: "claude", Source: "branch", Task: "first"}, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	taken := func(n string) bool { return n == "claude-repo-2" }
+	second, _, err := s.Create(&p, CreateRequest{Agent: "claude", Source: "branch", Task: "second"}, taken)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if first.Name != "claude-repo" || second.Name != "claude-repo-3" {
+		t.Fatalf("names = %q, %q", first.Name, second.Name)
+	}
+	recs, _ := s.Store.Sandboxes()
+	titles := map[string]string{}
+	for _, r := range recs {
+		titles[r.Name] = r.Title
+	}
+	if len(recs) != 2 || titles["claude-repo"] != "first" || titles["claude-repo-3"] != "second" {
+		t.Fatalf("the first sandbox should keep its title: %+v", titles)
 	}
 }
 

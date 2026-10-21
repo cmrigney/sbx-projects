@@ -1,6 +1,7 @@
 package core
 
 import (
+	"fmt"
 	"regexp"
 	"strings"
 )
@@ -20,13 +21,16 @@ func SandboxName(agentName, project, source, value string) string {
 	return agentName + "-" + Slug(v)
 }
 
-// uniqueName puts the project in a name another sandbox already has, so
-// the same branch can be worked on in two projects.
-func uniqueName(name, agentName, project string, taken func(string) bool) string {
-	if taken != nil && taken(name) {
-		return agentName + "-" + Slug(project) + "-" + strings.TrimPrefix(name, agentName+"-")
+// uniqueName numbers a name another sandbox already has: name-2, name-3...
+func uniqueName(name string, taken func(string) bool) string {
+	if !taken(name) {
+		return name
 	}
-	return name
+	for i := 2; ; i++ {
+		if n := fmt.Sprintf("%s-%d", name, i); !taken(n) {
+			return n
+		}
+	}
 }
 
 var slugRe = regexp.MustCompile(`[^a-z0-9.-]+`)
