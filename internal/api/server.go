@@ -431,7 +431,8 @@ func checkCreate(req *CreateRequest) error {
 	switch req.Source {
 	case "branch":
 		// The branch is optional, as in the TUI: without one, the sandbox
-		// is named after the project and stays on the branch it starts on.
+		// is named after the project, and a private clone checks out the
+		// default branch.
 	case "pr":
 		if core.Digits(req.Value) == "0" {
 			return fail(http.StatusBadRequest, "Give the pull request's number or URL")

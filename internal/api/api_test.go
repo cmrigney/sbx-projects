@@ -221,6 +221,10 @@ func TestCreateRunsThroughToTheAgent(t *testing.T) {
 	if st := f.do(t, "POST", "/v1/sandboxes", `{"projectId":1,"agent":"claude","source":"branch","value":" ","task":"Tidy up"}`, &plain); st != http.StatusAccepted || plain.Branch != "" || plain.Title != "Tidy up" {
 		t.Fatalf("the branch is optional: %d %+v", st, plain)
 	}
+	var again SandboxView
+	if st := f.do(t, "POST", "/v1/sandboxes", `{"projectId":1,"agent":"claude","source":"branch"}`, &again); st != http.StatusAccepted || again.Name != plain.Name+"-2" {
+		t.Fatalf("a taken name should be numbered: %d %q after %q", st, again.Name, plain.Name)
+	}
 	var v SandboxView
 	st := f.do(t, "POST", "/v1/sandboxes", `{"projectId":1,"agent":"claude","source":"pr","value":"#12","model":"opus","mcps":["notion"]}`, &v)
 	if st != http.StatusAccepted || v.Name != "claude-pr-12" || !v.Busy || !v.Clone || v.ModelLabel != "Opus" {
