@@ -78,7 +78,20 @@ func ProjectByID(projects []store.Project, id int64) store.Project {
 
 // CanPR says whether the sandbox has commits worth a pull request.
 func CanPR(rec *store.Sandbox, p *agent.Probe) bool {
-	return rec.Clone && p != nil && len(p.Commits) > 0
+	return PRBlocker(rec, p) == ""
+}
+
+// PRBlocker says why a pull request can't be opened, or "" when it can.
+func PRBlocker(rec *store.Sandbox, p *agent.Probe) string {
+	switch {
+	case !rec.Clone:
+		return "Pull requests are opened from clone-mode sandboxes"
+	case p == nil:
+		return "No changes recorded yet"
+	case len(p.Commits) == 0:
+		return "No commits to open a pull request for"
+	}
+	return ""
 }
 
 // CanCheckout says whether the sandbox's branch can be fetched into the
