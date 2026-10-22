@@ -771,8 +771,11 @@ func (m *Model) askRemove() tea.Cmd {
 
 func (m *Model) openPR() tea.Cmd {
 	it, ok := m.selItem()
-	if !ok || !canPR(it) {
+	if !ok || it.busy != "" {
 		return nil
+	}
+	if why := core.PRBlocker(it.rec, it.probe); why != "" {
+		return m.say(why, cWarn)
 	}
 	return m.sendPrompt(it, core.PRPrompt(m.cur().DefaultBranch), "Asked "+it.name()+" to open a draft PR")
 }
