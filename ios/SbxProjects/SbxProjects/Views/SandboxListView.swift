@@ -97,6 +97,10 @@ private struct HostPill: View {
                 .font(.subheadline)
                 .foregroundStyle(.secondary)
         }
+        .padding(.horizontal, 6)
+        // Toolbar items are sized to fit only what they must show, which
+        // truncates the name to an ellipsis.
+        .fixedSize()
         .accessibilityElement(children: .combine)
     }
 
