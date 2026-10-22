@@ -569,3 +569,38 @@ func TestGitSetupScriptBranchesFromRemoteHead(t *testing.T) {
 		t.Fatalf("new branch starts at %s, want main's %s", got, want)
 	}
 }
+
+func TestGitSetupScriptWithoutBranchChecksOutRemoteHead(t *testing.T) {
+	if _, err := exec.LookPath("git"); err != nil {
+		t.Skip("git not installed")
+	}
+	dir := t.TempDir()
+	git := func(wd string, args ...string) string {
+		t.Helper()
+		cmd := exec.Command("git", append([]string{"-C", wd, "-c", "user.name=t", "-c", "user.email=t@t", "-c", "init.defaultBranch=main"}, args...)...)
+		out, err := cmd.CombinedOutput()
+		if err != nil {
+			t.Fatalf("git %v: %v\n%s", args, err, out)
+		}
+		return strings.TrimSpace(string(out))
+	}
+	remote, host := filepath.Join(dir, "remote"), filepath.Join(dir, "host")
+	git(dir, "init", "-q", remote)
+	git(remote, "commit", "-q", "--allow-empty", "-m", "on main")
+	git(dir, "clone", "-q", remote, host)
+	git(host, "checkout", "-q", "-b", "feat")
+	git(host, "commit", "-q", "--allow-empty", "-m", "on feat")
+	// main moves on after the host cloned it.
+	git(remote, "commit", "-q", "--allow-empty", "-m", "newer main")
+	cmd := exec.Command("bash", "-c", GitSetupScript("branch", "", "feat"))
+	cmd.Dir = host
+	if out, err := cmd.CombinedOutput(); err != nil {
+		t.Fatalf("setup script: %v\n%s", err, out)
+	}
+	if got := git(host, "branch", "--show-current"); got != "main" {
+		t.Fatalf("on %q, want main", got)
+	}
+	if got, want := git(host, "rev-parse", "HEAD"), git(remote, "rev-parse", "main"); got != want {
+		t.Fatalf("main is at %s, want the remote's %s", got, want)
+	}
+}

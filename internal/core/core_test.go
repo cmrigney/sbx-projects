@@ -160,6 +160,10 @@ func TestCreateCloneLeavesRepoLayout(t *testing.T) {
 	if len(steps) != 3 {
 		t.Fatalf("got %d steps", len(steps))
 	}
+	_, steps, _ = s.Create(&p, CreateRequest{Agent: "claude", Source: "branch", Clone: true}, nil)
+	if len(steps) != 3 {
+		t.Fatalf("a private clone without a branch should check out the default branch; got %d steps", len(steps))
+	}
 	_, steps, _ = s.Create(&p, CreateRequest{Agent: "claude", Source: "repo"}, nil)
 	if len(steps) != 2 {
 		t.Fatalf("a direct sandbox has no branch to check out; got %d steps", len(steps))

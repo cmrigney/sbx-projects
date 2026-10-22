@@ -93,9 +93,13 @@ func (s *Service) Create(p *store.Project, r CreateRequest, taken func(string) b
 	steps := []Step{{Busy: "Creating the sandbox", Verb: "Creating", Run: func(ctx context.Context) (string, error) {
 		return "", be.Create(ctx, opts)
 	}}}
-	if r.Clone && branch != "" && (r.Source == "branch" || r.Source == "pr") {
+	if r.Clone && (r.Source != "pr" || branch != "") {
 		script := agent.GitSetupScript(r.Source, branch, p.DefaultBranch)
-		steps = append(steps, Step{Busy: "Checking out " + branch, Verb: "Checking out a branch in",
+		busy := "Checking out " + branch
+		if branch == "" {
+			busy = "Checking out the default branch"
+		}
+		steps = append(steps, Step{Busy: busy, Verb: "Checking out a branch in",
 			Run: func(ctx context.Context) (string, error) {
 				out, err := be.Exec(ctx, name, script)
 				if err != nil {

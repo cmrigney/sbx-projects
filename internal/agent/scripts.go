@@ -301,7 +301,8 @@ tmux -L %[1]s send-keys -t %[2]s Enter
 // checked out when the clone was made. The remote's HEAD wins over
 // defaultBranch, which is only the host's guess and goes stale when its
 // origin/HEAD does. It doesn't track the default branch, so a later push
-// goes to a branch of its own name.
+// goes to a branch of its own name. An empty value checks out the default
+// branch itself.
 func GitSetupScript(source, value, defaultBranch string) string {
 	enc := base64.StdEncoding.EncodeToString([]byte(value))
 	switch source {
@@ -311,9 +312,7 @@ func GitSetupScript(source, value, defaultBranch string) string {
 		return fmt.Sprintf(`set -e
 v=$(printf '%%s' '%s' | base64 -d)
 DEF=%s
-if git rev-parse -q --verify "refs/heads/$v" >/dev/null; then
-  git checkout "$v" 1>&2
-else
+default_base() {
   r=$(GIT_TERMINAL_PROMPT=0 git ls-remote --symref origin HEAD 2>/dev/null | awk '$1 == "ref:" && $3 == "HEAD" { sub("^refs/heads/", "", $2); print $2 }') || true
   if [ -n "$r" ]; then DEF=$r; fi
   GIT_TERMINAL_PROMPT=0 git fetch -q origin "$DEF" 1>&2 || true
@@ -322,6 +321,19 @@ else
     if git rev-parse -q --verify "$b^{commit}" >/dev/null 2>&1; then base=$b; break; fi
   done
   if [ -z "$base" ]; then echo "default branch $DEF not found" >&2; exit 5; fi
+}
+if [ -z "$v" ]; then
+  default_base
+  if git rev-parse -q --verify "refs/heads/$DEF" >/dev/null; then
+    git checkout "$DEF" 1>&2
+    git merge -q --ff-only "$base" >/dev/null 2>&1 || true
+  else
+    git checkout --track -b "$DEF" "$base" 1>&2
+  fi
+elif git rev-parse -q --verify "refs/heads/$v" >/dev/null; then
+  git checkout "$v" 1>&2
+else
+  default_base
   git checkout --no-track -b "$v" "$base" 1>&2
 fi
 git branch --show-current
