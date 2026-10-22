@@ -22,6 +22,9 @@ final class AppModel {
         let ok: Bool
     }
 
+    /// Every Mac this iPhone is paired with.
+    private(set) var servers: [PairedServer] = []
+    /// The one the app shows.
     private(set) var server: PairedServer?
     private(set) var connection: Connection = .connecting
     private(set) var projects: [Project] = []
@@ -41,7 +44,9 @@ final class AppModel {
     private var pending: Set<String> = []
 
     init() {
-        server = PairedServer.load()
+        let saved = PairedServers.load()
+        servers = saved.servers
+        server = servers.first { $0.id == saved.current } ?? servers.first
         makeClient()
     }
 
@@ -84,10 +89,13 @@ final class AppModel {
             }
             do {
                 for try await event in client.events() {
+                    // A stream from the Mac shown before a switch.
+                    if Task.isCancelled { return }
                     apply(event)
                     failures = 0
                 }
             } catch APIError.signedOut(let message) {
+                if Task.isCancelled { return }
                 connection = .signedOut(message)
                 streamTask = nil
                 return
@@ -139,14 +147,19 @@ final class AppModel {
     /// address. Returns whether the address changed.
     private func rediscover() async -> Bool {
         guard var server else { return false }
+        // Its own browser, so it doesn't stop the one the pairing screen
+        // shows while another Mac is being paired.
+        let browser = MacBrowser()
         browser.start()
         defer { browser.stop() }
         for _ in 0..<10 {
             if let mac = browser.found.first(where: { $0.serverID == server.id }) {
                 guard let address = try? await MacBrowser.resolve(mac.endpoint), address != server.address else { return false }
+                guard !Task.isCancelled, self.server?.id == server.id else { return false }
                 server.address = address
-                server.save()
                 self.server = server
+                servers = servers.map { $0.id == server.id ? server : $0 }
+                save()
                 makeClient()
                 return true
             }
@@ -193,29 +206,54 @@ final class AppModel {
             guard fingerprint.hasPrefix(r.server.id) else { throw APIError.wrongCertificate }
             Keychain.setToken(r.token, for: r.server.id)
             let s = PairedServer(id: r.server.id, name: r.server.name, fingerprint: fingerprint, address: c.address)
-            s.save()
-            disconnect()
-            server = s
-            makeClient()
-            connect()
+            // Pairing again with a Mac replaces it where it was in the list.
+            if let i = servers.firstIndex(where: { $0.id == s.id }) {
+                servers[i] = s
+            } else {
+                servers.append(s)
+            }
+            show(s)
         } catch {
             pairingError = error.localizedDescription
         }
     }
 
-    /// Forgets the Mac on this device. The Mac keeps the device listed until
+    /// Switches to another paired Mac.
+    func select(_ id: String) {
+        guard id != server?.id, let s = servers.first(where: { $0.id == id }) else { return }
+        show(s)
+    }
+
+    /// Forgets a Mac on this device, and shows the next one if it was the
+    /// one shown. The Mac keeps the device listed until
     /// sbx-projects api devices rm removes it.
-    func forget() {
-        disconnect()
-        if let server {
-            Keychain.deleteToken(for: server.id)
+    func forget(_ id: String) {
+        Keychain.deleteToken(for: id)
+        servers.removeAll { $0.id == id }
+        if server?.id == id {
+            show(servers.first)
+        } else {
+            save()
         }
-        PairedServer.clear()
-        server = nil
-        client = nil
+    }
+
+    /// Shows a Mac, starting again from its snapshot, or nothing.
+    private func show(_ s: PairedServer?) {
+        disconnect()
+        server = s
         projects = []
         sandboxes = [:]
+        listError = nil
+        pending = []
+        toast = nil
         connection = .connecting
+        save()
+        makeClient()
+        connect()
+    }
+
+    private func save() {
+        PairedServers.save(servers, current: server?.id)
     }
 
     // MARK: Reads

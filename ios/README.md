@@ -22,7 +22,7 @@ Paths are under `SbxProjects/SbxProjects/`.
 |---|---|
 | `Model/Models.swift` | The JSON types from `internal/api/views.go` |
 | `API/APIClient.swift` | Requests, the event stream, and certificate pinning |
-| `API/Pairing.swift` | The paired Mac, its Keychain token, the pairing link and Bonjour browsing |
+| `API/Pairing.swift` | The paired Macs and which one is shown, their Keychain tokens, the pairing link and Bonjour browsing |
 | `App/AppModel.swift` | The state the views show, kept live from the event stream |
 | `Views/` | One file per screen, plus shared components and the markdown renderer |
 

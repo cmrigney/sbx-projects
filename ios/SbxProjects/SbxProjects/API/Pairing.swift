@@ -2,29 +2,42 @@ import Foundation
 import Network
 import Security
 
-/// The Mac this iPhone is paired with. The token lives in the Keychain;
-/// the rest in UserDefaults.
-nonisolated struct PairedServer: Codable, Sendable, Hashable {
+/// A Mac this iPhone is paired with. The token lives in the Keychain;
+/// the rest in UserDefaults, through `PairedServers`.
+nonisolated struct PairedServer: Codable, Sendable, Hashable, Identifiable {
     /// The first 16 hex digits of the certificate's fingerprint, which the
     /// Mac also advertises over Bonjour.
     let id: String
     var name: String
     let fingerprint: String
     var address: ServerAddress
+}
 
-    private static let key = "pairedServer"
+/// The Macs this iPhone is paired with, in the order they were paired, and
+/// which one the app shows.
+nonisolated enum PairedServers {
+    private static let listKey = "pairedServers"
+    private static let currentKey = "currentServer"
+    /// Where the one Mac lived before the app could pair with several.
+    private static let legacyKey = "pairedServer"
 
-    static func load() -> PairedServer? {
-        guard let data = UserDefaults.standard.data(forKey: key) else { return nil }
-        return try? JSONDecoder().decode(PairedServer.self, from: data)
+    static func load() -> (servers: [PairedServer], current: String?) {
+        let d = UserDefaults.standard
+        if let data = d.data(forKey: listKey), let servers = try? JSONDecoder().decode([PairedServer].self, from: data) {
+            return (servers, d.string(forKey: currentKey))
+        }
+        guard let data = d.data(forKey: legacyKey), let s = try? JSONDecoder().decode(PairedServer.self, from: data) else {
+            return ([], nil)
+        }
+        save([s], current: s.id)
+        d.removeObject(forKey: legacyKey)
+        return ([s], s.id)
     }
 
-    func save() {
-        UserDefaults.standard.set(try? JSONEncoder().encode(self), forKey: Self.key)
-    }
-
-    static func clear() {
-        UserDefaults.standard.removeObject(forKey: key)
+    static func save(_ servers: [PairedServer], current: String?) {
+        let d = UserDefaults.standard
+        d.set(try? JSONEncoder().encode(servers), forKey: listKey)
+        d.set(current, forKey: currentKey)
     }
 }
 

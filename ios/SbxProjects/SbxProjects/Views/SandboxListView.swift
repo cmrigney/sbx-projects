@@ -6,6 +6,7 @@ struct SandboxListView: View {
     @State private var filter: StatusGroup?
     @State private var query = ""
     @State private var showNew = false
+    @State private var addingMac = false
     @State private var path: [String] = []
 
     private var visibleCount: Int {
@@ -15,7 +16,7 @@ struct SandboxListView: View {
     var body: some View {
         NavigationStack(path: $path) {
             List {
-                ConnectionBanner()
+                ConnectionBanner { addingMac = true }
                 Section {
                     FilterChips(filter: $filter)
                 }
@@ -48,7 +49,7 @@ struct SandboxListView: View {
             .refreshable { await app.refresh() }
             .navigationDestination(for: String.self) { SandboxDetailView(name: $0) }
             .toolbar {
-                ToolbarItem(placement: .topBarLeading) { HostPill() }
+                ToolbarItem(placement: .topBarLeading) { HostPill { addingMac = true } }
                 ToolbarItem(placement: .topBarTrailing) {
                     Button { showNew = true } label: { Image(systemName: "plus") }
                         .accessibilityLabel("New sandbox")
@@ -57,6 +58,12 @@ struct SandboxListView: View {
             }
             .sheet(isPresented: $showNew) {
                 NewSandboxView { path.append($0.name) }
+            }
+            .sheet(isPresented: $addingMac) { PairingView(adding: true) }
+            // The open sandbox belongs to the Mac shown before.
+            .onChange(of: app.server?.id) {
+                path = []
+                showNew = false
             }
             .overlay { EmptyList(visible: visibleCount) }
         }
@@ -84,24 +91,36 @@ private struct EmptyList: View {
     }
 }
 
-/// Which Mac this is, and whether it's connected.
+/// Which Mac this is, and whether it's connected. Tapping it switches to
+/// another paired Mac or pairs a new one.
 private struct HostPill: View {
+    let addMac: () -> Void
+
     @Environment(AppModel.self) private var app
 
     var body: some View {
-        HStack(spacing: 6) {
-            Circle()
-                .fill(color)
-                .frame(width: 8, height: 8)
-            Text(app.server?.name ?? "")
-                .font(.subheadline)
-                .foregroundStyle(.secondary)
+        Menu {
+            Picker("Mac", selection: Binding(get: { app.server?.id ?? "" }, set: { app.select($0) })) {
+                ForEach(app.servers) { s in
+                    Label(s.name, systemImage: "laptopcomputer").tag(s.id)
+                }
+            }
+            Button(action: addMac) { Label("Pair Another Mac", systemImage: "plus") }
+        } label: {
+            HStack(spacing: 6) {
+                Circle()
+                    .fill(color)
+                    .frame(width: 8, height: 8)
+                Text(app.server?.name ?? "")
+                    .font(.subheadline)
+                    .foregroundStyle(.secondary)
+            }
+            .padding(.horizontal, 6)
+            // Toolbar items are sized to fit only what they must show, which
+            // truncates the name to an ellipsis.
+            .fixedSize()
         }
-        .padding(.horizontal, 6)
-        // Toolbar items are sized to fit only what they must show, which
-        // truncates the name to an ellipsis.
-        .fixedSize()
-        .accessibilityElement(children: .combine)
+        .accessibilityLabel("Mac: \(app.server?.name ?? "")")
     }
 
     private var color: Color {
@@ -115,6 +134,9 @@ private struct HostPill: View {
 
 /// Says why the list may be stale, and what to do about it.
 struct ConnectionBanner: View {
+    /// Opens pairing, to pair again with a Mac that signed this iPhone out.
+    let pairAgain: () -> Void
+
     @Environment(AppModel.self) private var app
 
     var body: some View {
@@ -138,7 +160,7 @@ struct ConnectionBanner: View {
                     VStack(alignment: .leading, spacing: 6) {
                         Text("Signed out").font(.subheadline.weight(.semibold))
                         Text(message).font(.footnote).foregroundStyle(.secondary)
-                        Button("Pair again") { app.forget() }.font(.subheadline.weight(.semibold))
+                        Button("Pair again", action: pairAgain).font(.subheadline.weight(.semibold))
                     }
                 } icon: {
                     Image(systemName: "lock.slash").foregroundStyle(.red)

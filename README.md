@@ -166,6 +166,7 @@ From the app you can:
 - Send the agent a message, or reply to its last answer.
 - Open a draft pull request, check out the branch on your Mac, and stop, resume or remove a sandbox.
 - Create a sandbox with the same choices as the New sandbox form.
+- Pair with more than one Mac and switch between them from the Mac's name at the top of the list.
 
 To try it, build the app from [`ios/`](ios/README.md) in Xcode, then run the API on your Mac and scan the QR code it shows:
 

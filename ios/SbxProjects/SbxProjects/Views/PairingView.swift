@@ -3,9 +3,14 @@ import UIKit
 internal import Vision
 import VisionKit
 
-/// Shown until the iPhone is paired with a Mac.
+/// Shown until the iPhone is paired with a Mac, and as a sheet to pair
+/// another.
 struct PairingView: View {
+    /// Whether this is the sheet, over a Mac that's already paired.
+    var adding = false
+
     @Environment(AppModel.self) private var app
+    @Environment(\.dismiss) private var dismiss
     @State private var scanning = false
     @State private var picked: MacBrowser.Found?
 
@@ -17,7 +22,7 @@ struct PairingView: View {
                         Image(systemName: "terminal.fill")
                             .font(.system(size: 34))
                             .foregroundStyle(.tint)
-                        Text("Connect to your Mac")
+                        Text(adding ? "Connect another Mac" : "Connect to your Mac")
                             .font(.title2.bold())
                         Text("On your Mac, run this in a terminal, then scan the code it shows.")
                             .foregroundStyle(.secondary)
@@ -64,8 +69,18 @@ struct PairingView: View {
                     }
                 }
             }
-            .navigationTitle("sbx-projects")
+            .navigationTitle(adding ? "Pair Another Mac" : "sbx-projects")
             .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                if adding {
+                    ToolbarItem(placement: .cancellationAction) { Button("Cancel") { dismiss() } }
+                }
+            }
+            // Pairing switches the app to that Mac. Pairing again with the
+            // Mac already shown leaves app.server as it was.
+            .onChange(of: app.pairing) { _, pairing in
+                if adding && !pairing && app.pairingError == nil { dismiss() }
+            }
             .onAppear { app.browser.start() }
             .onDisappear { app.browser.stop() }
             .sheet(isPresented: $scanning) {

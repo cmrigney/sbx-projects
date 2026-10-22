@@ -3,14 +3,42 @@ import UIKit
 
 struct SettingsView: View {
     @Environment(AppModel.self) private var app
-    @State private var confirmForget = false
+    @State private var forgetting: PairedServer?
+    @State private var addingMac = false
 
     var body: some View {
         NavigationStack {
             Form {
+                Section {
+                    ForEach(app.servers) { s in
+                        Button { app.select(s.id) } label: {
+                            HStack {
+                                VStack(alignment: .leading, spacing: 2) {
+                                    Text(s.name)
+                                    Text(s.address.display).font(.footnote.monospaced()).foregroundStyle(.secondary)
+                                }
+                                Spacer()
+                                if s.id == app.server?.id {
+                                    Image(systemName: "checkmark").fontWeight(.semibold).foregroundStyle(Color.accentColor)
+                                }
+                            }
+                        }
+                        .tint(.primary)
+                        .swipeActions {
+                            Button("Forget", role: .destructive) { forgetting = s }
+                        }
+                    }
+                    Button { addingMac = true } label: { Label("Pair Another Mac", systemImage: "plus") }
+                } header: {
+                    Text("Macs")
+                } footer: {
+                    if app.servers.count > 1 {
+                        Text("Tap a Mac to see its sandboxes.")
+                    }
+                }
+
                 if let server = app.server {
-                    Section("Mac") {
-                        LabeledContent("Name", value: server.name)
+                    Section(server.name) {
                         LabeledContent("Address") {
                             Text(server.address.display).font(.body.monospaced())
                         }
@@ -24,7 +52,7 @@ struct SettingsView: View {
                         }
                     }
                     Section {
-                        Button("Forget This Mac", role: .destructive) { confirmForget = true }
+                        Button("Forget This Mac", role: .destructive) { forgetting = server }
                     } footer: {
                         Text("To sign this iPhone out on the Mac too, run sbx-projects api devices rm there.")
                     }
@@ -35,11 +63,12 @@ struct SettingsView: View {
                 }
             }
             .navigationTitle("Settings")
-            .confirmationDialog("Forget \(app.server?.name ?? "this Mac")?", isPresented: $confirmForget, titleVisibility: .visible) {
-                Button("Forget", role: .destructive) { app.forget() }
-            } message: {
+            .confirmationDialog("Forget \(forgetting?.name ?? "this Mac")?", isPresented: Binding(get: { forgetting != nil }, set: { if !$0 { forgetting = nil } }), titleVisibility: .visible, presenting: forgetting) { s in
+                Button("Forget", role: .destructive) { app.forget(s.id) }
+            } message: { _ in
                 Text("You'll need to pair again to see its sandboxes.")
             }
+            .sheet(isPresented: $addingMac) { PairingView(adding: true) }
         }
     }
 
