@@ -6,6 +6,8 @@ Manage your coding agents in sandboxes through the `sbx` CLI from one terminal. 
 
 *The built-in demo: projects on the left, sandboxes in the middle, and activity for the selected sandbox on the right.*
 
+Away from your desk? The [iPhone app](#iphone-app-and-the-api) shows the same sandboxes and lets you answer your agents from your phone.
+
 ## Get started
 
 You’ll need **Go 1.26 or newer** to install or build. For real projects, install and configure the `sbx` CLI and make sure it is on your `PATH`.
@@ -144,6 +146,36 @@ Other agents only report whether their session is running.
 </details>
 
 ## iPhone app and the API
+
+The iPhone app keeps you in touch with your agents when you're away from the terminal. It shows the same projects and sandboxes as the TUI, kept live while the app is open, so you can see which agents need you, answer a question, read a reply in full, or start a new sandbox from your phone.
+
+<p align="center">
+  <img src="docs/images/ios-sandboxes.png" width="200" alt="The sandbox list, grouped by project, with filters for Needs you, Working and Ready">
+  <img src="docs/images/ios-sandbox-detail.png" width="200" alt="A sandbox whose agent is asking a question, with its activity and a message box">
+  <img src="docs/images/ios-changes.png" width="200" alt="The Changes tab, listing each changed file with its added and removed lines">
+  <img src="docs/images/ios-reply.png" width="200" alt="An agent's last reply rendered as markdown, with a box to reply">
+  <img src="docs/images/ios-new-sandbox.png" width="200" alt="The New sandbox form, with the task, branch, private clone, agent, model and kits">
+</p>
+
+*The demo data on an iPhone: every sandbox and its status, an agent waiting on a question, its changed files, another agent's last reply, and the New sandbox form.*
+
+From the app you can:
+
+- Filter sandboxes by Needs you, Working and Ready, or search by title, branch or name.
+- Read an agent's activity, changed files and commits, and the full diff file by file.
+- Send the agent a message, or reply to its last answer.
+- Open a draft pull request, check out the branch on your Mac, and stop, resume or remove a sandbox.
+- Create a sandbox with the same choices as the New sandbox form.
+
+To try it, build the app from [`ios/`](ios/README.md) in Xcode, then run the API on your Mac and scan the QR code it shows:
+
+```sh
+./sbx-projects api --demo --pair
+```
+
+Your phone and Mac need to be on the same network. Drop `--demo` to use your real projects.
+
+### The API
 
 `sbx-projects api` serves the same projects and sandboxes over HTTPS on your local network, for the iOS app in [`ios/`](ios/README.md). It runs the TUI's list-and-probe loop without a terminal and goes through the same `internal/core` actions.
 
