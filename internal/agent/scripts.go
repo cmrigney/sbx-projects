@@ -302,20 +302,19 @@ tmux -L %[1]s send-keys -t %[2]s Enter
 // defaultBranch, which is only the host's guess and goes stale when its
 // origin/HEAD does. It doesn't track the default branch, so a later push
 // goes to a branch of its own name. An empty value checks out the default
-// branch itself.
+// branch itself. Every source also points origin/HEAD at the remote's HEAD,
+// since the clone inherits the host's and agents read it to pick a PR base.
 func GitSetupScript(source, value, defaultBranch string) string {
 	enc := base64.StdEncoding.EncodeToString([]byte(value))
 	switch source {
 	case "pr":
-		return fmt.Sprintf("set -e\nv=$(printf '%%s' '%s' | base64 -d)\ngh pr checkout \"$v\" >&2\ngit branch --show-current\n", enc)
+		return fmt.Sprintf("set -e\nv=$(printf '%%s' '%s' | base64 -d)\n%sgh pr checkout \"$v\" >&2\ngit branch --show-current\n", enc, syncRemoteHead)
 	default:
 		return fmt.Sprintf(`set -e
 v=$(printf '%%s' '%s' | base64 -d)
 DEF=%s
-default_base() {
-  r=$(GIT_TERMINAL_PROMPT=0 git ls-remote --symref origin HEAD 2>/dev/null | awk '$1 == "ref:" && $3 == "HEAD" { sub("^refs/heads/", "", $2); print $2 }') || true
-  if [ -n "$r" ]; then DEF=$r; fi
-  GIT_TERMINAL_PROMPT=0 git fetch -q origin "$DEF" 1>&2 || true
+%sdefault_base() {
+  [ -n "$r" ] || GIT_TERMINAL_PROMPT=0 git fetch -q origin "$DEF" 1>&2 || true
   base=""
   for b in "origin/$DEF" "$DEF"; do
     if git rev-parse -q --verify "$b^{commit}" >/dev/null 2>&1; then base=$b; break; fi
@@ -337,9 +336,20 @@ else
   git checkout --no-track -b "$v" "$base" 1>&2
 fi
 git branch --show-current
-`, enc, shellQuote(defaultBranch))
+`, enc, shellQuote(defaultBranch), syncRemoteHead)
 	}
 }
+
+// syncRemoteHead asks the remote for its HEAD, fetches that branch and points
+// origin/HEAD at it, leaving the branch name in $r and $DEF. It does nothing
+// when the remote can't be reached.
+const syncRemoteHead = `r=$(GIT_TERMINAL_PROMPT=0 git ls-remote --symref origin HEAD 2>/dev/null | awk '$1 == "ref:" && $3 == "HEAD" { sub("^refs/heads/", "", $2); print $2 }') || true
+if [ -n "$r" ]; then
+  DEF=$r
+  GIT_TERMINAL_PROMPT=0 git fetch -q origin "$r" 1>&2 || true
+  git remote set-head origin "$r" >/dev/null 2>&1 || true
+fi
+`
 
 func heredoc(b *strings.Builder, path, content string) {
 	fmt.Fprintf(b, "cat > \"%s\" <<'SBXP_EOF'\n%sSBXP_EOF\n", path, content)
