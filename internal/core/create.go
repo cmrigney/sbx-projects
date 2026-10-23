@@ -63,25 +63,25 @@ func (s *Service) Create(p *store.Project, r CreateRequest, taken func(string) b
 		rec.ClaudeModel = r.Model
 		if r.Model != p.ClaudeModel {
 			p.ClaudeModel = r.Model
-			_ = s.Store.SetClaudeModel(p.ID, r.Model)
+			warn(s.Store.SetClaudeModel(p.ID, r.Model), "remember the Claude model", "project", p.Name)
 		}
 	case "codex":
 		rec.CodexModel = r.Model
 		if r.Model != p.CodexModel {
 			p.CodexModel = r.Model
-			_ = s.Store.SetCodexModel(p.ID, r.Model)
+			warn(s.Store.SetCodexModel(p.ID, r.Model), "remember the Codex model", "project", p.Name)
 		}
 	}
 	if r.RememberMCPs && !slices.Equal(r.MCPs, p.MCPs) {
 		p.MCPs = r.MCPs
-		_ = s.Store.SetMCPs(p.ID, r.MCPs)
+		warn(s.Store.SetMCPs(p.ID, r.MCPs), "remember the MCP servers", "project", p.Name)
 	}
 	if err := s.Store.UpsertSandbox(*rec); err != nil {
 		return nil, nil, err
 	}
 	if p.Layout == store.LayoutRepo && r.Clone {
 		p.Layout = store.LayoutFeature
-		_ = s.Store.SetLayout(p.ID, p.Layout)
+		warn(s.Store.SetLayout(p.ID, p.Layout), "save the layout", "project", p.Name)
 	}
 
 	prompt := strings.TrimSpace(r.Task)
@@ -107,7 +107,7 @@ func (s *Service) Create(p *store.Project, r CreateRequest, taken func(string) b
 				}
 				b := strings.TrimSpace(lastLine(out))
 				if b != "" {
-					_ = st.SetBranch(name, b)
+					warn(st.SetBranch(name, b), "save the branch", "sandbox", name)
 				}
 				return b, nil
 			},

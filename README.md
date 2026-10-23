@@ -104,8 +104,12 @@ An orange **●** and bold sandbox title mean there’s an unread reply. Read it
 | `--demo` | Explore built-in demo data without `sbx` |
 | `--db PATH` | Use a different projects database |
 | `--sbx PATH` | Use a specific `sbx` binary |
+| `--log PATH` | Write the debug log to `PATH`, or pass `off` to turn it off (also `$SBX_PROJECTS_LOG`) |
+| `--log-level LEVEL` | Log `debug`, `info` (the default), `warn` or `error` and above |
 
 Projects and sandbox metadata are stored in SQLite at `~/.local/share/sbx-projects/projects.db`, or `$XDG_DATA_HOME/sbx-projects/projects.db` when set. Demo mode does not use this database.
+
+**Debug log.** Each run writes a new log to the `sbx-projects` folder in your temp directory, and logs older than a week are deleted. The path is printed when the dashboard starts, again if it exits with an error, and at the bottom of the `?` help. The log records every error and status message, every `sbx` command that changes a sandbox, and the full error output of any `sbx` command that fails. With `--log-level debug` it also records the listing and status checks that run every few seconds. Scripts sent to sandboxes aren't logged, since they can contain your prompts.
 
 ## Requirements and limits
 

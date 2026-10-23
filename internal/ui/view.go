@@ -955,5 +955,16 @@ func (m *Model) helpLines() []Line {
 		{"A", "Add a project (a git repo)"}, {"D", "Forget the current project"}, {"m", "Layout: per feature or one for the repo"},
 		{"K", "Default kits for new sandboxes"}, {"e", "Open the project in your editor"}, {"?  esc", "Show or hide this help"}, {"q", "Quit"},
 	})...)
+	out = append(out, L(B("Debug log", cFg)))
+	log := []rune("off")
+	if m.logPath != "" {
+		log = []rune(tildePath(m.logPath))
+	}
+	// Paths have no spaces to wrap at, so they're split to fit the overlay.
+	for w := max(10, min(66, m.w-2)-6); len(log) > 0; {
+		n := min(w, len(log))
+		out = append(out, L(S("  "+string(log[:n]), cDim)))
+		log = log[n:]
+	}
 	return out
 }
