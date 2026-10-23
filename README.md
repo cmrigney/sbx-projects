@@ -180,6 +180,8 @@ Your phone and Mac need to be on the same network. Drop `--demo` to use your rea
 
 The same server also serves a web app that does everything the iPhone app does, for Android phones, iPads and other computers. Open the `https://…/#/pair?code=…` link `--pair` prints, or open the Mac's address and type the code. Your browser warns about the self-signed certificate the first time; accept it to continue. Each browser pairs as its own device, such as "Safari on iPhone", and `api devices rm` signs it out.
 
+The web app can also **attach** to an agent, as `Enter` does in the TUI: **Attach** on a sandbox (or `Enter` on a keyboard) opens its terminal in the page, resuming the sandbox or starting the agent first when needed. On a phone, a key bar adds Ctrl, Esc, Tab and the arrows. **Detach** or **Ctrl+B, then d** returns to the sandbox; the agent keeps running.
+
 It has a look of its own, taken from the app icon: navy and mint, with a terminal's type for branches, times and logs, in dark or light to match your system. On a phone it shows one screen at a time:
 
 <p align="center">

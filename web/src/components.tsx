@@ -5,9 +5,12 @@ import { useApp } from "./store";
 // Routes live in the hash, so the browser's back button closes sheets and
 // leaves a sandbox as the iPhone's back gesture does.
 
+/** What opens over a sandbox. The terminal covers the whole app. */
+export type Sheet = "reply" | "diff" | "remove" | "terminal";
+
 export type Route =
   | { page: "list" }
-  | { page: "sandbox"; name: string; sheet?: "reply" | "diff" | "remove"; file?: string }
+  | { page: "sandbox"; name: string; sheet?: Sheet; file?: string }
   | { page: "new" };
 
 function parse(hash: string): Route {
@@ -15,7 +18,7 @@ function parse(hash: string): Route {
   const parts = path.split("/").filter(Boolean).map(decodeURIComponent);
   if (parts[0] === "new") return { page: "new" };
   if (parts[0] === "s" && parts[1]) {
-    const sheet = parts[2] as "reply" | "diff" | "remove" | undefined;
+    const sheet = parts[2] as Sheet | undefined;
     const file = new URLSearchParams(query).get("file") ?? undefined;
     return { page: "sandbox", name: parts[1], sheet, file };
   }
@@ -431,7 +434,9 @@ export function useKeys(keys: Record<string, () => void>, enabled = true) {
     const onKey = (e: KeyboardEvent) => {
       if (e.metaKey || e.ctrlKey || e.altKey || e.defaultPrevented) return;
       const t = e.target as HTMLElement;
-      if (t.closest("input, textarea, select, [contenteditable]") || document.querySelector(".backdrop")) return;
+      if (t.closest("input, textarea, select, [contenteditable]") || document.querySelector(".backdrop, .term-page")) return;
+      // Enter on a focused button or link is that button's.
+      if (e.key === "Enter" && t.closest("button, a")) return;
       const fn = ref.current[e.key];
       if (fn) {
         e.preventDefault();

@@ -46,6 +46,7 @@ export function SandboxDetail({ name, wide }: { name: string; wide: boolean }) {
       "1": () => setTab("activity"),
       "2": () => setTab("changes"),
       "3": () => setTab("setup"),
+      Enter: run(true, () => go({ page: "sandbox", name, sheet: "terminal" })),
       i: () => document.getElementById("composer")?.focus(),
       t: run(s?.hasReply, () => go({ page: "sandbox", name, sheet: "reply" })),
       p: run(s?.canPR, () => act(name, (c) => c.openPR(name))),
@@ -69,7 +70,21 @@ export function SandboxDetail({ name, wide }: { name: string; wide: boolean }) {
         ) : (
           <span className="bar-name">{s?.name ?? name}</span>
         )}
-        {s && <Actions s={s} />}
+        {s && (
+          <div className="bar-actions">
+            <a
+              className={`btn small attach-btn ${s.busy ? "disabled" : ""}`}
+              href={href({ page: "sandbox", name, sheet: "terminal" })}
+              aria-disabled={s.busy}
+              title="Attach to the agent's terminal"
+            >
+              <Icon name="terminal" size={16} />
+              Attach
+              <kbd className="hint">enter</kbd>
+            </a>
+            <Actions s={s} />
+          </div>
+        )}
       </header>
       {!s && loadError && (
         <Empty icon="warn" title={`Couldn't load ${name}`}>
@@ -196,6 +211,7 @@ function Actions({ s }: { s: Sandbox }) {
       </button>
       {open && (
         <div className="menu" role="menu">
+          {item("Attach", "terminal", "enter", () => go({ page: "sandbox", name: s.name, sheet: "terminal" }))}
           {item("Last reply", "bubble", "t", () => go({ page: "sandbox", name: s.name, sheet: "reply" }), !s.hasReply)}
           {item("Open draft PR", "pr", "p", () => act(s.name, (c) => c.openPR(s.name)), !s.canPR)}
           {item("Check out on Mac", "laptop", "c", () => act(s.name, (c) => c.checkout(s.name)), !s.canCheckout)}

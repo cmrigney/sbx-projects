@@ -2028,3 +2028,180 @@ section:first-child > .diff-file {
   display: block;
   flex: none;
 }
+
+/* Terminal */
+
+.bar-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.attach-btn {
+  text-decoration: none;
+}
+
+.attach-btn.disabled {
+  opacity: 0.5;
+  pointer-events: none;
+}
+
+/* Covers the app, and on a phone only the part above the keyboard. */
+.term-page {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: 100dvh;
+  z-index: 60;
+  display: flex;
+  flex-direction: column;
+  background: #0a141d;
+  color: #e4efec;
+  padding: env(safe-area-inset-top) env(safe-area-inset-right) 0 env(safe-area-inset-left);
+}
+
+.term-bar {
+  flex: none;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  min-height: 48px;
+  padding: 0 var(--gutter);
+  border-bottom: 1px solid #192d3e;
+}
+
+.term-bar .back-btn {
+  color: #e4efec;
+}
+
+.term-bar .ghost:not(:disabled):hover {
+  background: #162838;
+  color: #fff;
+}
+
+.term-bar kbd.hint {
+  background: none;
+  border-color: #213749;
+  color: #5f7787;
+}
+
+.term-title {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+  font: 500 13px/1 var(--mono);
+  color: #93a9b5;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.term-dot {
+  flex: none;
+  width: 8px;
+  height: 8px;
+  border-radius: 2px;
+  background: #6f8797;
+}
+.term-dot.connecting {
+  background: #f5b94a;
+  animation: blink 1s steps(1) infinite;
+}
+.term-dot.open {
+  background: #85e8cd;
+  box-shadow: 0 0 0 3px rgba(133, 232, 205, 0.25);
+}
+.term-dot.closed {
+  background: #ff7b6e;
+}
+
+.term-body {
+  position: relative;
+  flex: 1;
+  min-height: 0;
+}
+
+.term-host {
+  position: absolute;
+  inset: 6px 4px 4px max(8px, env(safe-area-inset-left));
+}
+
+.term-host .xterm {
+  height: 100%;
+}
+
+.term-host .xterm-viewport {
+  background: transparent !important;
+}
+
+.term-closed {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 16px;
+  padding: var(--gutter);
+  text-align: center;
+  background: rgba(10, 20, 29, 0.82);
+  backdrop-filter: blur(2px);
+}
+
+.term-closed p {
+  max-width: 40ch;
+  margin: 0;
+  color: #e4efec;
+}
+
+.term-closed .btn:not(.primary) {
+  background: #101e2b;
+  border-color: #213749;
+  color: #e4efec;
+}
+
+.term-keys {
+  flex: none;
+  display: flex;
+  gap: 6px;
+  overflow-x: auto;
+  padding: 8px var(--gutter) calc(8px + env(safe-area-inset-bottom));
+  border-top: 1px solid #192d3e;
+  background: #0d1922;
+  scrollbar-width: none;
+}
+
+.term-keys button {
+  flex: 1 0 auto;
+  min-width: 44px;
+  height: 36px;
+  padding: 0 10px;
+  border: 1px solid #213749;
+  border-bottom-width: 2px;
+  border-radius: 8px;
+  background: #101e2b;
+  color: #e4efec;
+  font: 500 13px/1 var(--mono);
+}
+
+.term-keys button.on {
+  background: #85e8cd;
+  border-color: #85e8cd;
+  color: #101e2b;
+}
+
+/* A real keyboard has these keys. */
+@media (hover: hover) and (pointer: fine) {
+  .term-keys {
+    display: none;
+  }
+}
+
+/* The cursor shows where the terminal has focus. */
+.term-host .xterm:focus-visible,
+.term-host textarea:focus-visible {
+  outline: none;
+}

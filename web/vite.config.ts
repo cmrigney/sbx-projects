@@ -22,6 +22,6 @@ export default defineConfig({
   build: { outDir, emptyOutDir: true },
   server: {
     host: true,
-    proxy: { "/v1": { target: api, secure: false, changeOrigin: true } },
+    proxy: { "/v1": { target: api, secure: false, changeOrigin: true, ws: true } },
   },
 });

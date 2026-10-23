@@ -5,6 +5,8 @@ go 1.27.3
 require (
 	charm.land/bubbletea/v2 v2.1.0
 	charm.land/lipgloss/v2 v2.0.6
+	github.com/coder/websocket v1.8.15
+	github.com/creack/pty v1.1.24
 	github.com/mattn/go-runewidth v0.0.31
 	modernc.org/sqlite v1.60.1
 	rsc.io/qr v0.2.0

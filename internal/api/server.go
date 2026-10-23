@@ -36,6 +36,9 @@ func (s *Server) Handler() http.Handler {
 	mux := http.NewServeMux()
 	mux.HandleFunc("GET /v1/server", s.server)
 	mux.HandleFunc("POST /v1/pair", s.pair)
+	// The terminal authenticates itself, as browsers send its token in the
+	// WebSocket's subprotocols.
+	mux.HandleFunc("GET /v1/sandboxes/{name}/terminal", s.terminal)
 
 	auth := func(pattern string, h http.HandlerFunc) { mux.Handle(pattern, s.auth(h)) }
 	auth("GET /v1/events", s.events)

@@ -1,4 +1,4 @@
-import { useSyncExternalStore } from "react";
+import { Suspense, lazy, useSyncExternalStore } from "react";
 import { useApp } from "./store";
 import { Empty, Toasts, useRoute } from "./components";
 import { NewSandbox } from "./views/NewSandbox";
@@ -6,6 +6,9 @@ import { Pairing } from "./views/Pairing";
 import { SandboxDetail } from "./views/SandboxDetail";
 import { SandboxList } from "./views/SandboxList";
 import { DiffSheet, RemoveSheet, ReplySheet } from "./views/Sheets";
+
+// xterm.js is most of the app's size, so it loads on the first attach.
+const TerminalView = lazy(() => import("./views/Terminal").then((m) => ({ default: m.TerminalView })));
 
 // Past this width the list and the open sandbox sit side by side.
 const wideQuery = "(min-width: 900px)";
@@ -56,6 +59,11 @@ export function App() {
       {route.page === "sandbox" && open && route.sheet === "reply" && <ReplySheet sandbox={open} />}
       {route.page === "sandbox" && open && route.sheet === "diff" && <DiffSheet sandbox={open} file={route.file} />}
       {route.page === "sandbox" && open && route.sheet === "remove" && <RemoveSheet sandbox={open} />}
+      {route.page === "sandbox" && open && route.sheet === "terminal" && (
+        <Suspense fallback={<div className="term-page" />}>
+          <TerminalView sandbox={open} />
+        </Suspense>
+      )}
       <Toasts />
     </div>
   );

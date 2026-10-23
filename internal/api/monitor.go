@@ -227,10 +227,13 @@ func stops(steps []core.Step) bool {
 }
 
 // run runs an action's steps one after another in the background. Each
-// step's busy text is the sandbox's status while it runs. Callers hold m.mu.
-func (m *Monitor) run(name string, steps []core.Step, done string) {
+// step's busy text is the sandbox's status while it runs. The channel it
+// returns gets the action's error, or nil, once it has finished. Callers
+// hold m.mu.
+func (m *Monitor) run(name string, steps []core.Step, done string) <-chan error {
 	m.busy[name] = steps[0].Busy
 	m.publish()
+	finished := make(chan error, 1)
 	go func() {
 		ctx, cancel := context.WithTimeout(context.Background(), opTimeout)
 		defer cancel()
@@ -290,7 +293,9 @@ func (m *Monitor) run(name string, steps []core.Step, done string) {
 		}
 		m.publish()
 		m.Refresh()
+		finished <- failed
 	}()
+	return finished
 }
 
 // Subscribe returns a channel of changes, starting with a snapshot of
