@@ -87,6 +87,9 @@ func TestParsePortRoundTrips(t *testing.T) {
 			t.Errorf("Spec() = %q, want %q", got.Spec(), spec)
 		}
 	}
+	if got := (Port{HostIP: "0.0.0.0", SandboxPort: 3000}).Spec(); got != "0.0.0.0:3000:3000" {
+		t.Errorf("Spec() with only a host IP = %q, want 0.0.0.0:3000:3000", got)
+	}
 	for _, bad := range []string{"", "x", "0", "70000", "1:2:3:4", "8080:3000/sctp", "[::1]:3000", "[::1:8080:3000"} {
 		if p, err := ParsePort(bad); err == nil {
 			t.Errorf("ParsePort(%q) = %+v, want an error", bad, p)

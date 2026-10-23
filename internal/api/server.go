@@ -8,6 +8,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"net"
 	"net/http"
 	"slices"
 	"strconv"
@@ -384,8 +385,11 @@ func (s *Server) publishPort(w http.ResponseWriter, r *http.Request) {
 	}
 	p := req.port()
 	p.Protocol = strings.ToLower(strings.TrimSpace(p.Protocol))
+	p.HostIP = strings.Trim(strings.TrimSpace(p.HostIP), "[]")
 	s.act(w, r, func(it item) ([]core.Step, string, error) {
 		switch {
+		case p.HostIP != "" && net.ParseIP(p.HostIP) == nil:
+			return nil, "", fail(http.StatusBadRequest, "%q isn't an IP address", p.HostIP)
 		case p.SandboxPort < 1 || p.SandboxPort > 65535:
 			return nil, "", fail(http.StatusBadRequest, "The sandbox port must be from 1 to 65535")
 		case p.HostPort < 0 || p.HostPort > 65535:
@@ -393,14 +397,14 @@ func (s *Server) publishPort(w http.ResponseWriter, r *http.Request) {
 		case p.Protocol != "" && !slices.Contains(sbx.Protocols, p.Protocol):
 			return nil, "", fail(http.StatusBadRequest, "%q isn't a protocol; use one of %s", p.Protocol, strings.Join(sbx.Protocols, ", "))
 		}
-		host := p.HostPort
-		if host == 0 {
-			host = p.SandboxPort
+		shown := p
+		if shown.HostPort == 0 {
+			shown.HostPort = p.SandboxPort
 		}
-		if slices.ContainsFunc(it.live.Ports, func(q sbx.Port) bool { return q.HostPort == host && q.SandboxPort == p.SandboxPort }) {
-			return nil, "", fail(http.StatusConflict, "%s already publishes port %d", it.rec.Name, host)
+		if slices.ContainsFunc(it.live.Ports, func(q sbx.Port) bool { return q.HostPort == shown.HostPort && q.SandboxPort == p.SandboxPort }) {
+			return nil, "", fail(http.StatusConflict, "%s already publishes port %d", it.rec.Name, shown.HostPort)
 		}
-		return s.Monitor.svc.PublishPort(it.rec.Name, p), fmt.Sprintf("Published port %d → %d for %s", host, p.SandboxPort, it.rec.Name), nil
+		return s.Monitor.svc.PublishPort(it.rec.Name, p), fmt.Sprintf("Published port %s for %s", shown, it.rec.Name), nil
 	})
 }
 

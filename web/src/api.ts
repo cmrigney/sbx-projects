@@ -212,7 +212,7 @@ export class Client {
   resume = (name: string) => this.call<Sandbox>("POST", `/v1/sandboxes/${enc(name)}/resume`);
   checkout = (name: string) => this.call<Sandbox>("POST", `/v1/sandboxes/${enc(name)}/checkout`);
   /** Without a host port, the sandbox's port number is used on the Mac too. */
-  publishPort = (name: string, p: { sandboxPort: number; hostPort?: number; protocol?: string }) =>
+  publishPort = (name: string, p: { sandboxPort: number; hostPort?: number; hostIP?: string; protocol?: string }) =>
     this.call<Sandbox>("POST", `/v1/sandboxes/${enc(name)}/ports`, p);
   unpublishPort = (name: string, p: Port) => this.call<Sandbox>("POST", `/v1/sandboxes/${enc(name)}/ports/unpublish`, p);
   remove = (name: string) => this.call<Sandbox>("DELETE", `/v1/sandboxes/${enc(name)}`);

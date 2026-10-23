@@ -68,10 +68,11 @@ nonisolated struct Port: Codable, Sendable, Hashable {
 }
 
 /// A port to publish. Without a host port, the sandbox's port number is
-/// used on the Mac too.
+/// used on the Mac too. Without a host IP, sbx's default address is used.
 nonisolated struct PublishPortRequest: Codable, Sendable {
     let sandboxPort: Int
     let hostPort: Int?
+    var hostIP: String?
 }
 
 nonisolated struct Sandbox: Codable, Sendable, Hashable, Identifiable {

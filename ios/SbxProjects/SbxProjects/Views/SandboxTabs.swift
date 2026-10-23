@@ -295,6 +295,7 @@ private struct PortsSection: View {
     @Environment(AppModel.self) private var app
     @State private var sandboxPort = ""
     @State private var hostPort = ""
+    @State private var network = false
 
     private func number(_ s: String) -> Int? {
         guard let n = Int(s.trimmingCharacters(in: .whitespaces)), (1...65535).contains(n) else { return nil }
@@ -325,12 +326,21 @@ private struct PortsSection: View {
             RowDivider()
             field("Mac port", text: $hostPort, placeholder: sandboxPort.isEmpty ? "Same" : sandboxPort)
             RowDivider()
+            Picker("Reachable from", selection: $network) {
+                Text("This Mac only").tag(false)
+                Text("Local network").tag(true)
+            }
+            .pickerStyle(.segmented)
+            .labelsHidden()
+            .padding(.horizontal, 14)
+            .padding(.vertical, 11)
+            RowDivider()
             Button(action: publish) { Text("Publish").frame(maxWidth: .infinity) }
                 .buttonStyle(PrimaryButtonStyle())
                 .disabled(!canPublish)
                 .padding(14)
         }
-        Text("Forwards a port on the Mac to the sandbox, as sbx ports --publish does.")
+        Text("Forwards a port on the Mac to the sandbox, as sbx ports --publish does. Local network listens on 0.0.0.0, so other devices can reach it; the server in the sandbox must listen on 0.0.0.0 too.")
             .font(.footnote)
             .foregroundStyle(Theme.muted)
     }
@@ -350,7 +360,7 @@ private struct PortsSection: View {
 
     private func publish() {
         guard let port = number(sandboxPort) else { return }
-        let r = PublishPortRequest(sandboxPort: port, hostPort: number(hostPort))
+        let r = PublishPortRequest(sandboxPort: port, hostPort: number(hostPort), hostIP: network ? "0.0.0.0" : nil)
         Task {
             if await app.publishPort(r, on: sandbox.name) {
                 sandboxPort = ""

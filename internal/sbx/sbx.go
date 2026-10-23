@@ -68,8 +68,12 @@ func portNumber(s string) (int, error) {
 }
 
 // Spec is the port in the form sbx ports takes, leaving out what is unset.
+// A host IP without a host port uses the sandbox's port on the host.
 func (p Port) Spec() string {
 	s := strconv.Itoa(p.SandboxPort)
+	if p.HostPort == 0 && p.HostIP != "" {
+		p.HostPort = p.SandboxPort
+	}
 	if p.HostPort > 0 {
 		s = strconv.Itoa(p.HostPort) + ":" + s
 		if ip := p.HostIP; ip != "" {

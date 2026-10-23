@@ -381,13 +381,15 @@ function Ports({ s }: { s: Sandbox }) {
   const { act } = useApp();
   const [sandboxPort, setSandboxPort] = useState("");
   const [hostPort, setHostPort] = useState("");
+  const [network, setNetwork] = useState(false);
   const valid = (v: string) => /^\d+$/.test(v) && +v >= 1 && +v <= 65535;
   const ok = valid(sandboxPort) && (hostPort === "" || valid(hostPort));
 
   const publish = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!ok || s.busy) return;
-    const done = await act(s.name, (c) => c.publishPort(s.name, { sandboxPort: +sandboxPort, hostPort: hostPort ? +hostPort : undefined }));
+    const port = { sandboxPort: +sandboxPort, hostPort: hostPort ? +hostPort : undefined, hostIP: network ? "0.0.0.0" : undefined };
+    const done = await act(s.name, (c) => c.publishPort(s.name, port));
     if (done) {
       setSandboxPort("");
       setHostPort("");
@@ -421,12 +423,21 @@ function Ports({ s }: { s: Sandbox }) {
           <input className="mono" inputMode="numeric" placeholder={sandboxPort || "Same"} value={hostPort} onChange={(e) => setHostPort(e.target.value.trim())} />
         </label>
         <div className="field">
+          <div className="segmented">
+            <button type="button" className={network ? "" : "on"} onClick={() => setNetwork(false)}>This Mac only</button>
+            <button type="button" className={network ? "on" : ""} onClick={() => setNetwork(true)}>Local network</button>
+          </div>
+        </div>
+        <div className="field">
           <button className="btn primary" type="submit" disabled={!ok || s.busy}>
             Publish
           </button>
         </div>
       </form>
-      <p className="note">Forwards a port on the Mac to the sandbox, as <code>sbx ports --publish</code> does.</p>
+      <p className="note">
+        Forwards a port on the Mac to the sandbox, as <code>sbx ports --publish</code> does. Local network listens on{" "}
+        <code>0.0.0.0</code>, so other devices can reach it; the server in the sandbox must listen on <code>0.0.0.0</code> too.
+      </p>
     </>
   );
 }
