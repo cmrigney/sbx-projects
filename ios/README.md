@@ -4,7 +4,7 @@ A SwiftUI app for checking on and messaging the agents that `sbx-projects api` s
 
 ## Building
 
-Open `SbxProjects/SbxProjects.xcodeproj` in Xcode 26 or later. The app folder is synchronized with the project, so new files in `SbxProjects/SbxProjects/` are built without adding them by hand. `SbxProjects/Info.plist` is merged with the keys Xcode generates; it adds Local Network and camera access, Bonjour browsing for `_sbxp._tcp`, local TLS, and the `sbxp://` URL scheme.
+Open `SbxProjects/SbxProjects.xcodeproj` in Xcode 26 or later. SwiftTerm has Metal shaders, so Xcode needs its Metal Toolchain; install it from Xcode > Settings > Components, or with `xcodebuild -downloadComponent MetalToolchain`. The app folder is synchronized with the project, so new files in `SbxProjects/SbxProjects/` are built without adding them by hand. `SbxProjects/Info.plist` is merged with the keys Xcode generates; it adds Local Network and camera access, Bonjour browsing for `_sbxp._tcp`, local TLS, and the `sbxp://` URL scheme.
 
 ## Trying it
 

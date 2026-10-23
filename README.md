@@ -153,13 +153,14 @@ It looks like the [web app](#in-a-browser): the app icon's navy and mint, with a
 
 <p align="center">
   <img src="docs/images/ios-sandboxes.png" width="200" alt="The sandbox list, grouped by project, with filters for Needs you, Working and Ready">
-  <img src="docs/images/ios-sandbox-detail.png" width="200" alt="A sandbox whose agent is asking a question, with its activity as a log and a message box">
+  <img src="docs/images/ios-sandbox-detail.png" width="200" alt="A sandbox whose agent is asking a question, with its activity as a log, a message box, and Attach in the toolbar">
+  <img src="docs/images/ios-terminal.png" width="200" alt="The agent's terminal attached full screen, with Detach at the top and a key bar for Esc, Ctrl, Tab and the arrows">
   <img src="docs/images/ios-changes.png" width="200" alt="The Changes tab, listing each changed file with its added and removed lines">
   <img src="docs/images/ios-reply.png" width="200" alt="An agent's last reply rendered as markdown, with a box to reply">
   <img src="docs/images/ios-new-sandbox.png" width="200" alt="The New sandbox form, with the task, branch, private clone, agent, model and kits">
 </p>
 
-*The demo data on an iPhone in dark mode: every sandbox and its status, an agent waiting on a question, its changed files, another agent's last reply, and the New sandbox form.*
+*The demo data on an iPhone in dark mode: every sandbox and its status, an agent waiting on a question, its terminal attached, its changed files, another agent's last reply, and the New sandbox form.*
 
 From the app you can:
 
