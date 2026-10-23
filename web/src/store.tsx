@@ -67,6 +67,16 @@ export function AppProvider({ children }: { children: ReactNode }) {
   // once creating it answers, which can be after its outcome arrives.
   const unclaimed = useRef(new Map<string, ServerEvent>());
 
+  // Request responses are only a fallback until the stream updates that sandbox.
+  // Keep removal revisions too, so late responses cannot resurrect deleted entries.
+  const revision = useRef(0);
+  const snapshotRevision = useRef(0);
+  const sandboxRevisions = useRef(new Map<string, number>());
+  const applyResponse = useCallback((s: Sandbox, started: number) => {
+    if (snapshotRevision.current > started || (sandboxRevisions.current.get(s.name) ?? 0) > started) return;
+    setSandboxes((all) => ({ ...all, [s.name]: s }));
+  }, []);
+
   const client = useMemo(() => (token ? new Client(token) : null), [token]);
 
   const show = useCallback((message: string, ok: boolean) => setToast({ id: Date.now(), message, ok }), []);
@@ -79,6 +89,8 @@ export function AppProvider({ children }: { children: ReactNode }) {
     (e: ServerEvent) => {
       switch (e.type) {
         case "snapshot":
+          snapshotRevision.current = ++revision.current;
+          sandboxRevisions.current.clear();
           setProjects(e.projects ?? []);
           setSandboxes(Object.fromEntries((e.sandboxes ?? []).map((s) => [s.name, s])));
           setListError(e.listError);
@@ -87,12 +99,14 @@ export function AppProvider({ children }: { children: ReactNode }) {
         case "sandbox":
           if (e.sandbox) {
             const s = e.sandbox;
+            sandboxRevisions.current.set(s.name, ++revision.current);
             setSandboxes((all) => ({ ...all, [s.name]: s }));
           }
           break;
         case "removed":
           if (e.name) {
             const name = e.name;
+            sandboxRevisions.current.set(name, ++revision.current);
             setSandboxes(({ [name]: _, ...rest }) => rest);
           }
           break;
@@ -167,6 +181,8 @@ export function AppProvider({ children }: { children: ReactNode }) {
   }, []);
 
   const signOut = useCallback(() => {
+    snapshotRevision.current = ++revision.current;
+    sandboxRevisions.current.clear();
     saveToken(null);
     setToken(null);
     setSandboxes({});
@@ -178,9 +194,10 @@ export function AppProvider({ children }: { children: ReactNode }) {
       if (!client) return false;
       // Before the request, as the outcome can arrive before its answer.
       pending.current.add(name);
+      const started = revision.current;
       try {
         const s = await fn(client);
-        setSandboxes((all) => ({ ...all, [s.name]: s }));
+        applyResponse(s, started);
         return true;
       } catch (e) {
         pending.current.delete(name);
@@ -188,34 +205,36 @@ export function AppProvider({ children }: { children: ReactNode }) {
         return false;
       }
     },
-    [client, show],
+    [client, show, applyResponse],
   );
 
   const create = useCallback(
     async (r: CreateRequest) => {
       if (!client) throw new Error("Not paired");
       unclaimed.current.clear();
+      const started = revision.current;
       const s = await client.create(r);
       const done = unclaimed.current.get(s.name);
       if (done) show(done.message ?? "", !!done.ok);
       else pending.current.add(s.name);
-      setSandboxes((all) => ({ ...all, [s.name]: s }));
+      applyResponse(s, started);
       return s;
     },
-    [client],
+    [client, show, applyResponse],
   );
 
   const markSeen = useCallback(
     async (name: string) => {
       if (!client) return;
+      const started = revision.current;
       try {
         const s = await client.seen(name);
-        setSandboxes((all) => ({ ...all, [s.name]: s }));
+        applyResponse(s, started);
       } catch {
         // The mark stays; the next reading clears it.
       }
     },
-    [client],
+    [client, applyResponse],
   );
 
   const value: AppState = {

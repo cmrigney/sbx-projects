@@ -287,10 +287,14 @@ export function Sheet({
   label: string;
 }) {
   const ref = useRef<HTMLDivElement>(null);
+  const close = useRef(onClose);
+  useEffect(() => {
+    close.current = onClose;
+  }, [onClose]);
   useEffect(() => {
     const prev = document.activeElement as HTMLElement | null;
     ref.current?.focus();
-    const onKey = (e: KeyboardEvent) => e.key === "Escape" && onClose();
+    const onKey = (e: KeyboardEvent) => e.key === "Escape" && close.current();
     window.addEventListener("keydown", onKey);
     document.body.classList.add("sheet-open");
     return () => {
@@ -298,7 +302,7 @@ export function Sheet({
       document.body.classList.remove("sheet-open");
       prev?.focus?.();
     };
-  }, [onClose]);
+  }, []);
   return (
     <div className="backdrop" onClick={onClose}>
       <div className="sheet" role="dialog" aria-modal aria-label={label} ref={ref} tabIndex={-1} onClick={(e) => e.stopPropagation()}>
