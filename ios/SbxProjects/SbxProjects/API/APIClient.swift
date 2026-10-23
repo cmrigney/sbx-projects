@@ -109,6 +109,14 @@ nonisolated final class APIClient: Sendable {
         try await perform(request("POST", "/v1/sandboxes/\(escape(name))/\(action)"))
     }
 
+    func publishPort(_ r: PublishPortRequest, on name: String) async throws -> Sandbox {
+        try await perform(request("POST", "/v1/sandboxes/\(escape(name))/ports", body: r))
+    }
+
+    func unpublishPort(_ port: Port, on name: String) async throws -> Sandbox {
+        try await perform(request("POST", "/v1/sandboxes/\(escape(name))/ports/unpublish", body: port))
+    }
+
     func remove(_ name: String) async throws -> Sandbox {
         try await perform(request("DELETE", "/v1/sandboxes/\(escape(name))"))
     }

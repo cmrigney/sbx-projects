@@ -92,6 +92,7 @@ type SandboxView struct {
 }
 
 type PortView struct {
+	HostIP      string `json:"hostIP,omitempty"`
 	HostPort    int    `json:"hostPort"`
 	SandboxPort int    `json:"sandboxPort"`
 	Protocol    string `json:"protocol"`
@@ -116,7 +117,7 @@ func sandboxView(it item) SandboxView {
 		v.Model, v.ModelLabel = m, core.ModelLabel(rec.Agent, m)
 	}
 	for _, p := range it.live.Ports {
-		v.Ports = append(v.Ports, PortView{HostPort: p.HostPort, SandboxPort: p.SandboxPort, Protocol: p.Protocol})
+		v.Ports = append(v.Ports, PortView{HostIP: p.HostIP, HostPort: p.HostPort, SandboxPort: p.SandboxPort, Protocol: p.Protocol})
 	}
 	var active time.Time
 	if p := it.probe; p != nil {

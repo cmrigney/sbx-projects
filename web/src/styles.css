@@ -1236,6 +1236,28 @@ a.file:active {
   user-select: text;
 }
 
+.ports li {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 8px 14px;
+  font-size: 14px;
+}
+
+.ports li + li,
+.port-form > .field + .field {
+  border-top: 1px solid var(--line-soft);
+}
+
+.port-form input {
+  text-align: right;
+}
+
+.port-form .btn {
+  flex: 1;
+}
+
 /* Actions menu */
 
 .menu-wrap {

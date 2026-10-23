@@ -47,14 +47,31 @@ nonisolated struct Project: Codable, Sendable, Hashable, Identifiable {
 }
 
 nonisolated struct Port: Codable, Sendable, Hashable {
+    var hostIP: String?
     let hostPort: Int
     let sandboxPort: Int
     let proto: String
 
     nonisolated enum CodingKeys: String, CodingKey {
-        case hostPort, sandboxPort
+        case hostIP, hostPort, sandboxPort
         case proto = "protocol"
     }
+
+    /// The port as host → sandbox, as the TUI shows it.
+    var label: String {
+        var host = "\(hostPort)"
+        if let ip = hostIP, !ip.isEmpty {
+            host = (ip.contains(":") ? "[\(ip)]" : ip) + ":" + host
+        }
+        return "\(host) → \(sandboxPort)" + (proto.isEmpty ? "" : "/\(proto)")
+    }
+}
+
+/// A port to publish. Without a host port, the sandbox's port number is
+/// used on the Mac too.
+nonisolated struct PublishPortRequest: Codable, Sendable {
+    let sandboxPort: Int
+    let hostPort: Int?
 }
 
 nonisolated struct Sandbox: Codable, Sendable, Hashable, Identifiable {

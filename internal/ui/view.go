@@ -611,7 +611,7 @@ func (m *Model) setupBody(it item, w int, ws string) []Line {
 	if len(it.live.Ports) > 0 {
 		var ps []string
 		for _, p := range it.live.Ports {
-			ps = append(ps, fmt.Sprintf("%d → %d", p.HostPort, p.SandboxPort))
+			ps = append(ps, p.String())
 		}
 		ports = strings.Join(ps, ", ")
 	}
@@ -693,6 +693,12 @@ func (m *Model) acts(it item) []keyHint {
 	}
 	if m.tab == tabChanges && it.probe != nil && len(it.probe.Files) > 0 {
 		a = append(a, keyHint{"d", "Diff", func() tea.Cmd { return m.openDiff("") }})
+	}
+	if m.tab == tabSetup {
+		a = append(a, keyHint{"P", "Publish port", m.openPublish})
+		if len(it.live.Ports) > 0 {
+			a = append(a, keyHint{"U", "Unpublish port", m.openUnpublish})
+		}
 	}
 	if canPR(it) {
 		a = append(a, keyHint{"p", "Open PR", m.openPR})
@@ -942,6 +948,7 @@ func (m *Model) helpLines() []Line {
 		{"t", "Read the agent's last reply in full"}, {"d", "Show the full diff (Changes tab)"}, {"p", "Ask the agent to open a draft PR"},
 		{"c", "Fetch its branch into your own checkout"}, {"o", "Open its clone in Cursor or VS Code over SSH"},
 		{"s  r  x", "Stop, resume, remove"}, {"$", "Open a shell in the sandbox"},
+		{"P  U", "Publish or unpublish a port (sbx ports)"},
 	})...)
 	out = append(out, sec("Projects", [][2]string{
 		{"A", "Add a project (a git repo)"}, {"D", "Forget the current project"}, {"m", "Layout: per feature or one for the repo"},

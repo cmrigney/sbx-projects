@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from "react";
-import type { Sandbox, SandboxDetail as Detail } from "../api";
+import type { Port, Sandbox, SandboxDetail as Detail } from "../api";
 import { useApp } from "../store";
 import { ChangeCounts, Composer, DiffStat, Empty, FeedGlyph, Icon, StatusTag, back, go, href, memoryLabel, shortAgo, stateColor, useKeys, useTick } from "../components";
 
@@ -352,7 +352,6 @@ function SetupTab({ s, detail }: { s: Sandbox; detail: Detail | null }) {
   rows.push(["kits", s.kits.length ? s.kits.join("\n") : "none"]);
   rows.push(["mcp", s.mcps.length ? s.mcps.join(", ") : "none"]);
   if (s.cpus && s.memoryMiB) rows.push(["resources", `${s.cpus} cpus, ${memoryLabel(s.memoryMiB)}`]);
-  if (s.ports.length) rows.push(["ports", s.ports.map((p) => `${p.hostPort} → ${p.sandboxPort}/${p.protocol}`).join("\n")]);
   if (detail?.workspace) rows.push(["path", detail.workspace]);
   rows.push(["sandbox", s.name]);
   rows.push(["created", new Date(s.createdAt * 1000).toLocaleString(undefined, { dateStyle: "medium", timeStyle: "short" })]);
@@ -367,6 +366,67 @@ function SetupTab({ s, detail }: { s: Sandbox; detail: Detail | null }) {
         ))}
       </dl>
       <p className="note">Kits and MCP servers are fixed when a sandbox is created.</p>
+      <Ports s={s} />
+    </>
+  );
+}
+
+function portLabel(p: Port) {
+  const ip = p.hostIP ? (p.hostIP.includes(":") ? `[${p.hostIP}]:` : `${p.hostIP}:`) : "";
+  return `${ip}${p.hostPort} → ${p.sandboxPort}${p.protocol ? `/${p.protocol}` : ""}`;
+}
+
+/** Ports published on the Mac with sbx ports, and a form to publish another. */
+function Ports({ s }: { s: Sandbox }) {
+  const { act } = useApp();
+  const [sandboxPort, setSandboxPort] = useState("");
+  const [hostPort, setHostPort] = useState("");
+  const valid = (v: string) => /^\d+$/.test(v) && +v >= 1 && +v <= 65535;
+  const ok = valid(sandboxPort) && (hostPort === "" || valid(hostPort));
+
+  const publish = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!ok || s.busy) return;
+    const done = await act(s.name, (c) => c.publishPort(s.name, { sandboxPort: +sandboxPort, hostPort: hostPort ? +hostPort : undefined }));
+    if (done) {
+      setSandboxPort("");
+      setHostPort("");
+    }
+  };
+
+  return (
+    <>
+      <div className="section-head">
+        <span>Ports</span>
+      </div>
+      {s.ports.length > 0 && (
+        <ul className="panel ports">
+          {s.ports.map((p) => (
+            <li key={`${p.hostIP}-${p.hostPort}-${p.protocol}`}>
+              <code>{portLabel(p)}</code>
+              <button className="btn small" disabled={s.busy} onClick={() => act(s.name, (c) => c.unpublishPort(s.name, p))}>
+                Unpublish
+              </button>
+            </li>
+          ))}
+        </ul>
+      )}
+      <form className="card port-form" onSubmit={publish}>
+        <label className="field">
+          <span>Sandbox port</span>
+          <input className="mono" inputMode="numeric" placeholder="3000" value={sandboxPort} onChange={(e) => setSandboxPort(e.target.value.trim())} />
+        </label>
+        <label className="field">
+          <span>Mac port</span>
+          <input className="mono" inputMode="numeric" placeholder={sandboxPort || "Same"} value={hostPort} onChange={(e) => setHostPort(e.target.value.trim())} />
+        </label>
+        <div className="field">
+          <button className="btn primary" type="submit" disabled={!ok || s.busy}>
+            Publish
+          </button>
+        </div>
+      </form>
+      <p className="note">Forwards a port on the Mac to the sandbox, as <code>sbx ports --publish</code> does.</p>
     </>
   );
 }

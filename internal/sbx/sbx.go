@@ -3,7 +3,10 @@ package sbx
 
 import (
 	"context"
+	"fmt"
 	"os/exec"
+	"slices"
+	"strconv"
 	"strings"
 	"time"
 )
@@ -13,6 +16,90 @@ type Port struct {
 	HostPort    int    `json:"host_port"`
 	SandboxPort int    `json:"sandbox_port"`
 	Protocol    string `json:"protocol"`
+}
+
+// Protocols are the protocols sbx ports accepts. A port without one is
+// tcp4.
+var Protocols = []string{"tcp4", "tcp", "tcp6", "udp", "udp4", "udp6"}
+
+// ParsePort reads sbx ports' [[HOST_IP:]HOST_PORT:]SANDBOX_PORT[/PROTOCOL]
+// form. A bracketed host IP may be IPv6. Parts left out are zero.
+func ParsePort(spec string) (Port, error) {
+	var p Port
+	rest := strings.TrimSpace(spec)
+	if i := strings.LastIndexByte(rest, '/'); i >= 0 {
+		rest, p.Protocol = rest[:i], strings.ToLower(rest[i+1:])
+		if !slices.Contains(Protocols, p.Protocol) {
+			return Port{}, fmt.Errorf("%q isn't a protocol; use one of %s", p.Protocol, strings.Join(Protocols, ", "))
+		}
+	}
+	if strings.HasPrefix(rest, "[") {
+		end := strings.Index(rest, "]:")
+		if end < 0 {
+			return Port{}, fmt.Errorf("%q has an unclosed host IP", spec)
+		}
+		p.HostIP, rest = rest[1:end], rest[end+2:]
+	}
+	parts := strings.Split(rest, ":")
+	if p.HostIP == "" && len(parts) == 3 {
+		p.HostIP, parts = parts[0], parts[1:]
+	}
+	if len(parts) > 2 || (p.HostIP != "" && len(parts) != 2) {
+		return Port{}, fmt.Errorf("%q isn't [[HOST_IP:]HOST_PORT:]SANDBOX_PORT[/PROTOCOL]", spec)
+	}
+	var err error
+	if p.SandboxPort, err = portNumber(parts[len(parts)-1]); err != nil {
+		return Port{}, err
+	}
+	if len(parts) == 2 {
+		if p.HostPort, err = portNumber(parts[0]); err != nil {
+			return Port{}, err
+		}
+	}
+	return p, nil
+}
+
+func portNumber(s string) (int, error) {
+	n, err := strconv.Atoi(strings.TrimSpace(s))
+	if err != nil || n < 1 || n > 65535 {
+		return 0, fmt.Errorf("%q isn't a port number from 1 to 65535", s)
+	}
+	return n, nil
+}
+
+// Spec is the port in the form sbx ports takes, leaving out what is unset.
+func (p Port) Spec() string {
+	s := strconv.Itoa(p.SandboxPort)
+	if p.HostPort > 0 {
+		s = strconv.Itoa(p.HostPort) + ":" + s
+		if ip := p.HostIP; ip != "" {
+			if strings.Contains(ip, ":") {
+				ip = "[" + ip + "]"
+			}
+			s = ip + ":" + s
+		}
+	}
+	if p.Protocol != "" {
+		s += "/" + p.Protocol
+	}
+	return s
+}
+
+// String shows the port as host → sandbox.
+func (p Port) String() string {
+	host := strconv.Itoa(p.HostPort)
+	if p.HostIP != "" {
+		ip := p.HostIP
+		if strings.Contains(ip, ":") {
+			ip = "[" + ip + "]"
+		}
+		host = ip + ":" + host
+	}
+	s := fmt.Sprintf("%s → %d", host, p.SandboxPort)
+	if p.Protocol != "" {
+		s += "/" + p.Protocol
+	}
+	return s
 }
 
 type Sandbox struct {
@@ -76,6 +163,10 @@ type Backend interface {
 	Start(ctx context.Context, name string) error
 	Stop(ctx context.Context, name string) error
 	Remove(ctx context.Context, name string) error
+	// PublishPort forwards a port on the host to one in the sandbox.
+	PublishPort(ctx context.Context, name string, p Port) error
+	// UnpublishPort stops forwarding a port List reported.
+	UnpublishPort(ctx context.Context, name string, p Port) error
 	// Exec runs a bash script in the sandbox's workspace and returns stdout.
 	Exec(ctx context.Context, name, script string) (string, error)
 	// Interactive returns a command that takes over the terminal.

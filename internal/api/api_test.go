@@ -389,3 +389,30 @@ func TestListErrorsReachOpenStreams(t *testing.T) {
 		t.Fatalf("recovered: %+v", ev)
 	}
 }
+
+func TestPublishAndUnpublishAPort(t *testing.T) {
+	f := newFixture(t, []sbx.MockSeed{{Name: "claude-a", Agent: "claude", Workspace: "/src/repo", Running: true}})
+	f.waitFor(t, func(m map[string]SandboxView) bool { return m["claude-a"].Running })
+	for _, body := range []string{`{"sandboxPort":0}`, `{"sandboxPort":3000,"hostPort":70000}`, `{"sandboxPort":3000,"protocol":"sctp"}`} {
+		if st := f.do(t, "POST", "/v1/sandboxes/claude-a/ports", body, nil); st != http.StatusBadRequest {
+			t.Errorf("publish %s = %d, want 400", body, st)
+		}
+	}
+	if st := f.do(t, "POST", "/v1/sandboxes/claude-a/ports", `{"sandboxPort":3000}`, nil); st != http.StatusAccepted {
+		t.Fatalf("publish = %d", st)
+	}
+	got := f.waitFor(t, func(m map[string]SandboxView) bool { return len(m["claude-a"].Ports) == 1 && !m["claude-a"].Busy })
+	if p := got["claude-a"].Ports[0]; p.HostPort != 3000 || p.SandboxPort != 3000 {
+		t.Fatalf("port = %+v, want the sandbox's port on the host too", p)
+	}
+	if st := f.do(t, "POST", "/v1/sandboxes/claude-a/ports", `{"sandboxPort":3000}`, nil); st != http.StatusConflict {
+		t.Errorf("publishing again = %d, want 409", st)
+	}
+	if st := f.do(t, "POST", "/v1/sandboxes/claude-a/ports/unpublish", `{"hostPort":8080}`, nil); st != http.StatusNotFound {
+		t.Errorf("unpublishing an unknown port = %d, want 404", st)
+	}
+	if st := f.do(t, "POST", "/v1/sandboxes/claude-a/ports/unpublish", `{"hostPort":3000}`, nil); st != http.StatusAccepted {
+		t.Fatalf("unpublish = %d", st)
+	}
+	f.waitFor(t, func(m map[string]SandboxView) bool { return len(m["claude-a"].Ports) == 0 && !m["claude-a"].Busy })
+}

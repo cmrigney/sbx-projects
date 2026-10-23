@@ -40,6 +40,7 @@ export interface Project {
 }
 
 export interface Port {
+  hostIP?: string;
   hostPort: number;
   sandboxPort: number;
   protocol: string;
@@ -210,6 +211,10 @@ export class Client {
   stop = (name: string) => this.call<Sandbox>("POST", `/v1/sandboxes/${enc(name)}/stop`);
   resume = (name: string) => this.call<Sandbox>("POST", `/v1/sandboxes/${enc(name)}/resume`);
   checkout = (name: string) => this.call<Sandbox>("POST", `/v1/sandboxes/${enc(name)}/checkout`);
+  /** Without a host port, the sandbox's port number is used on the Mac too. */
+  publishPort = (name: string, p: { sandboxPort: number; hostPort?: number; protocol?: string }) =>
+    this.call<Sandbox>("POST", `/v1/sandboxes/${enc(name)}/ports`, p);
+  unpublishPort = (name: string, p: Port) => this.call<Sandbox>("POST", `/v1/sandboxes/${enc(name)}/ports/unpublish`, p);
   remove = (name: string) => this.call<Sandbox>("DELETE", `/v1/sandboxes/${enc(name)}`);
   create = (r: CreateRequest) => this.call<Sandbox>("POST", "/v1/sandboxes", r);
   options = (project: number) => this.call<Options>("GET", `/v1/options?project=${project}`);

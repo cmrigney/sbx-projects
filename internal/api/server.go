@@ -56,6 +56,8 @@ func (s *Server) Handler() http.Handler {
 	auth("POST /v1/sandboxes/{name}/stop", s.stop)
 	auth("POST /v1/sandboxes/{name}/resume", s.resume)
 	auth("POST /v1/sandboxes/{name}/checkout", s.checkout)
+	auth("POST /v1/sandboxes/{name}/ports", s.publishPort)
+	auth("POST /v1/sandboxes/{name}/ports/unpublish", s.unpublishPort)
 	return mux
 }
 
@@ -365,6 +367,58 @@ func (s *Server) checkout(w http.ResponseWriter, r *http.Request) {
 			return nil, "", fail(http.StatusConflict, "Only a running sandbox on a private clone can be checked out")
 		}
 		return s.Monitor.svc.CheckoutLocal(it.project, it.rec), "Checked out " + it.rec.Branch + " in " + it.project.Name, nil
+	})
+}
+
+func (p PortView) port() sbx.Port {
+	return sbx.Port{HostIP: p.HostIP, HostPort: p.HostPort, SandboxPort: p.SandboxPort, Protocol: p.Protocol}
+}
+
+// publishPort forwards a host port to the sandbox. Without a host port, the
+// sandbox's port number is used on the host too.
+func (s *Server) publishPort(w http.ResponseWriter, r *http.Request) {
+	var req PortView
+	if err := readJSON(r, &req); err != nil {
+		writeErr(w, err)
+		return
+	}
+	p := req.port()
+	p.Protocol = strings.ToLower(strings.TrimSpace(p.Protocol))
+	s.act(w, r, func(it item) ([]core.Step, string, error) {
+		switch {
+		case p.SandboxPort < 1 || p.SandboxPort > 65535:
+			return nil, "", fail(http.StatusBadRequest, "The sandbox port must be from 1 to 65535")
+		case p.HostPort < 0 || p.HostPort > 65535:
+			return nil, "", fail(http.StatusBadRequest, "The host port must be from 1 to 65535")
+		case p.Protocol != "" && !slices.Contains(sbx.Protocols, p.Protocol):
+			return nil, "", fail(http.StatusBadRequest, "%q isn't a protocol; use one of %s", p.Protocol, strings.Join(sbx.Protocols, ", "))
+		}
+		host := p.HostPort
+		if host == 0 {
+			host = p.SandboxPort
+		}
+		if slices.ContainsFunc(it.live.Ports, func(q sbx.Port) bool { return q.HostPort == host && q.SandboxPort == p.SandboxPort }) {
+			return nil, "", fail(http.StatusConflict, "%s already publishes port %d", it.rec.Name, host)
+		}
+		return s.Monitor.svc.PublishPort(it.rec.Name, p), fmt.Sprintf("Published port %d → %d for %s", host, p.SandboxPort, it.rec.Name), nil
+	})
+}
+
+// unpublishPort stops forwarding a port the sandbox lists. Fields left out
+// match any.
+func (s *Server) unpublishPort(w http.ResponseWriter, r *http.Request) {
+	var req PortView
+	if err := readJSON(r, &req); err != nil {
+		writeErr(w, err)
+		return
+	}
+	want := req.port()
+	s.act(w, r, func(it item) ([]core.Step, string, error) {
+		ports := core.MatchPorts(it.live.Ports, want)
+		if len(ports) == 0 {
+			return nil, "", fail(http.StatusNotFound, "%s doesn't publish port %d", it.rec.Name, want.HostPort)
+		}
+		return s.Monitor.svc.UnpublishPort(it.rec.Name, ports...), fmt.Sprintf("Unpublished port %d of %s", want.HostPort, it.rec.Name), nil
 	})
 }
 

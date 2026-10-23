@@ -364,6 +364,15 @@ final class AppModel {
         await run(name) { try await $0.act("checkout", on: name) }
     }
 
+    @discardableResult
+    func publishPort(_ r: PublishPortRequest, on name: String) async -> Bool {
+        await run(name) { try await $0.publishPort(r, on: name) }
+    }
+
+    func unpublishPort(_ port: Port, on name: String) async {
+        await run(name) { try await $0.unpublishPort(port, on: name) }
+    }
+
     func remove(_ name: String) async {
         await run(name) { try await $0.remove(name) }
     }

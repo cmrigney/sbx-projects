@@ -260,9 +260,6 @@ struct SetupTab: View {
             if let cpus = sandbox.cpus, let mem = sandbox.memoryMiB, cpus > 0 {
                 row("Resources", "\(cpus) CPUs, \(memoryLabel(mem))")
             }
-            if !sandbox.ports.isEmpty {
-                row("Ports", sandbox.ports.map { "\($0.hostPort) → \($0.sandboxPort)/\($0.proto)" }.joined(separator: "\n"), mono: true)
-            }
             if let ws = detail?.workspace { row("Path", ws, mono: true) }
             row("Sandbox", sandbox.name, mono: true)
             row("Created", sandbox.createdAt.formatted(date: .abbreviated, time: .shortened), last: true)
@@ -270,6 +267,7 @@ struct SetupTab: View {
         Text("Kits and MCP servers are fixed when a sandbox is created.")
             .font(.footnote)
             .foregroundStyle(Theme.muted)
+        PortsSection(sandbox: sandbox)
     }
 
     private func row(_ label: String, _ value: String, mono: Bool = false, last: Bool = false) -> some View {
@@ -286,6 +284,78 @@ struct SetupTab: View {
             .padding(.horizontal, 14)
             .padding(.vertical, 11)
             if !last { RowDivider() }
+        }
+    }
+}
+
+/// Ports published on the Mac with sbx ports, and a form to publish another.
+private struct PortsSection: View {
+    let sandbox: Sandbox
+
+    @Environment(AppModel.self) private var app
+    @State private var sandboxPort = ""
+    @State private var hostPort = ""
+
+    private func number(_ s: String) -> Int? {
+        guard let n = Int(s.trimmingCharacters(in: .whitespaces)), (1...65535).contains(n) else { return nil }
+        return n
+    }
+
+    private var canPublish: Bool {
+        number(sandboxPort) != nil && (hostPort.trimmingCharacters(in: .whitespaces).isEmpty || number(hostPort) != nil)
+            && !sandbox.busy
+    }
+
+    var body: some View {
+        SectionLabel(text: "Ports").padding(.top, 8)
+        Card {
+            ForEach(sandbox.ports, id: \.self) { port in
+                HStack {
+                    Text(port.label).font(.mono).foregroundStyle(Theme.text).textSelection(.enabled)
+                    Spacer(minLength: 16)
+                    Button("Unpublish") { Task { await app.unpublishPort(port, on: sandbox.name) } }
+                        .font(.subheadline)
+                        .disabled(sandbox.busy)
+                }
+                .padding(.horizontal, 14)
+                .padding(.vertical, 11)
+                RowDivider()
+            }
+            field("Sandbox port", text: $sandboxPort, placeholder: "3000")
+            RowDivider()
+            field("Mac port", text: $hostPort, placeholder: sandboxPort.isEmpty ? "Same" : sandboxPort)
+            RowDivider()
+            Button(action: publish) { Text("Publish").frame(maxWidth: .infinity) }
+                .buttonStyle(PrimaryButtonStyle())
+                .disabled(!canPublish)
+                .padding(14)
+        }
+        Text("Forwards a port on the Mac to the sandbox, as sbx ports --publish does.")
+            .font(.footnote)
+            .foregroundStyle(Theme.muted)
+    }
+
+    private func field(_ label: String, text: Binding<String>, placeholder: String) -> some View {
+        HStack {
+            Text(label).foregroundStyle(Theme.text)
+            Spacer(minLength: 16)
+            TextField(placeholder, text: text)
+                .font(.body.monospaced())
+                .keyboardType(.numberPad)
+                .multilineTextAlignment(.trailing)
+        }
+        .padding(.horizontal, 14)
+        .padding(.vertical, 11)
+    }
+
+    private func publish() {
+        guard let port = number(sandboxPort) else { return }
+        let r = PublishPortRequest(sandboxPort: port, hostPort: number(hostPort))
+        Task {
+            if await app.publishPort(r, on: sandbox.name) {
+                sandboxPort = ""
+                hostPort = ""
+            }
         }
     }
 }
