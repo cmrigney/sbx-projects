@@ -5,6 +5,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"log/slog"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -16,6 +17,7 @@ import (
 	tea "charm.land/bubbletea/v2"
 
 	"github.com/cmrigney/sbx-projects/internal/agent"
+	"github.com/cmrigney/sbx-projects/internal/applog"
 	"github.com/cmrigney/sbx-projects/internal/core"
 	"github.com/cmrigney/sbx-projects/internal/sbx"
 	"github.com/cmrigney/sbx-projects/internal/store"
@@ -55,6 +57,12 @@ type Options struct {
 	// HostCPUs and HostMemMiB size the host meter.
 	HostCPUs   int
 	HostMemMiB int64
+	// LogPath is shown in the help, so users know where to look when
+	// something goes wrong. Empty when logging is off.
+	LogPath string
+	// Logs returns the latest log entries for the log view; nil when
+	// logging is off.
+	Logs func() []applog.Entry
 }
 
 type Model struct {
@@ -81,6 +89,8 @@ type Model struct {
 
 	hostCPUs   int
 	hostMemMiB int64
+	logPath    string
+	logs       func() []applog.Entry
 
 	P     int
 	sel   string
@@ -95,6 +105,7 @@ type Model struct {
 	reply   bool
 	rsc     int
 	diff    *diffView
+	log     *logView
 	modal   *newForm
 	prompt  *promptForm
 	confirm *confirmBox
@@ -113,7 +124,7 @@ func New(o Options) (*Model, error) {
 		recs: map[string]*store.Sandbox{}, live: map[string]sbx.Sandbox{},
 		probes: map[string]*agent.Probe{}, probing: map[string]bool{}, probeAt: map[string]time.Time{},
 		busy: map[string]string{}, noProbeUntil: map[string]time.Time{}, focus: focusList,
-		hostCPUs: o.HostCPUs, hostMemMiB: o.HostMemMiB,
+		hostCPUs: o.HostCPUs, hostMemMiB: o.HostMemMiB, logPath: o.LogPath, logs: o.Logs,
 	}
 	if m.hostCPUs == 0 {
 		m.hostCPUs = runtime.NumCPU()
@@ -129,6 +140,13 @@ func New(o Options) (*Model, error) {
 		}
 	}
 	return m, nil
+}
+
+// reloadOrWarn reloads when a failure can only leave the lists stale.
+func (m *Model) reloadOrWarn() {
+	if err := m.reload(); err != nil {
+		slog.Warn("reload projects", "err", err)
+	}
 }
 
 func (m *Model) reload() error {
@@ -251,6 +269,14 @@ func (m *Model) run(name string, steps []core.Step, then func(out string) tea.Cm
 }
 
 func (m *Model) say(text, kind string) tea.Cmd {
+	level := slog.LevelInfo
+	switch kind {
+	case cBad:
+		level = slog.LevelError
+	case cWarn:
+		level = slog.LevelWarn
+	}
+	slog.Log(context.Background(), level, "status", "msg", text)
 	m.msg, m.msgKind = text, kind
 	m.msgID++
 	id := m.msgID
@@ -286,6 +312,7 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		if msg.attached {
 			m.markSeen(msg.name)
 		}
+		slog.Info("session ended", "sandbox", msg.name, "err", msg.err)
 		var cmds []tea.Cmd
 		if msg.err != nil {
 			cmds = append(cmds, m.say("Session ended: "+msg.err.Error(), cWarn))
@@ -315,7 +342,9 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		if mo.Button == tea.MouseWheelUp {
 			d = -1
 		}
-		if m.diff != nil {
+		if m.log != nil {
+			m.log.scroll(d)
+		} else if m.diff != nil {
 			m.diff.sc = max(0, m.diff.sc+d)
 		} else if m.reply {
 			m.rsc = max(0, m.rsc+d)
@@ -349,7 +378,7 @@ func (m *Model) onList(msg listMsg) tea.Cmd {
 	}
 	m.loose = r.Loose
 	if r.Adopted > 0 {
-		_ = m.reload()
+		m.reloadOrWarn()
 	}
 	m.fixSel()
 
@@ -813,7 +842,9 @@ func (m *Model) toggleLayout() tea.Cmd {
 	} else {
 		p.Layout = store.LayoutFeature
 	}
-	_ = m.st.SetLayout(p.ID, p.Layout)
+	if err := m.st.SetLayout(p.ID, p.Layout); err != nil {
+		slog.Warn("save the layout", "project", p.Name, "err", err)
+	}
 	m.sel, m.tab, m.dsc = "", tabActivity, 0
 	m.fixSel()
 	if p.Layout == store.LayoutRepo {
@@ -983,7 +1014,7 @@ func (m *Model) addProject(path string) tea.Cmd {
 		return m.say(err.Error(), cBad)
 	}
 	m.prompt = nil
-	_ = m.reload()
+	m.reloadOrWarn()
 	for i, pp := range m.projects {
 		if pp.ID == added.ID {
 			m.setProject(i)
@@ -999,8 +1030,10 @@ func (m *Model) askRemoveProject() tea.Cmd {
 	}
 	id, name := p.ID, p.Name
 	m.confirm = &confirmBox{title: "Forget " + name + "?", body: "Its sandboxes keep running and stay in sbx. You can add the project again later.", yes: "Forget", fn: func() tea.Cmd {
-		_ = m.st.RemoveProject(id)
-		_ = m.reload()
+		if err := m.st.RemoveProject(id); err != nil {
+			return m.say("Could not forget "+name+": "+err.Error(), cBad)
+		}
+		m.reloadOrWarn()
 		m.setProject(m.P)
 		return m.say("Forgot "+name, cOk)
 	}}

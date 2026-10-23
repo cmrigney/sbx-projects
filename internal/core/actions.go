@@ -64,7 +64,7 @@ func (s *Service) Remove(name string, running bool) []Step {
 		if err := be.Remove(ctx, name); err != nil {
 			return "", err
 		}
-		_ = st.RemoveSandbox(name)
+		warn(st.RemoveSandbox(name), "forget a removed sandbox", "sandbox", name)
 		return "", nil
 	}}}
 }

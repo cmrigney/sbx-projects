@@ -5,6 +5,7 @@ package main
 import (
 	"flag"
 	"fmt"
+	"log/slog"
 	"os"
 	"os/exec"
 	"runtime"
@@ -13,6 +14,7 @@ import (
 
 	tea "charm.land/bubbletea/v2"
 
+	"github.com/cmrigney/sbx-projects/internal/applog"
 	"github.com/cmrigney/sbx-projects/internal/sbx"
 	"github.com/cmrigney/sbx-projects/internal/store"
 	"github.com/cmrigney/sbx-projects/internal/ui"
@@ -23,15 +25,34 @@ func main() {
 	dbPath := flag.String("db", defPath, "path to the projects database")
 	sbxBin := flag.String("sbx", "sbx", "sbx binary to run")
 	demo := flag.Bool("demo", false, "run against built-in demo data instead of sbx")
+	logPath := flag.String("log", os.Getenv("SBX_PROJECTS_LOG"), `debug log file; empty for a new one in the temp directory, "off" for none`)
+	logLevel := slog.LevelInfo
+	flag.TextVar(&logLevel, "log-level", logLevel, "debug log level: debug, info, warn or error")
 	flag.Parse()
 
-	if err := run(*dbPath, *sbxBin, *demo); err != nil {
+	path, closer, err := applog.Open(*logPath, logLevel)
+	if err != nil {
+		fmt.Fprintln(os.Stderr, "sbx-projects: no debug log:", err)
+	}
+	defer closer.Close()
+	if path != "" {
+		fmt.Fprintln(os.Stderr, "sbx-projects: debug log at", path)
+	}
+	slog.Info("starting", "args", os.Args[1:], "db", *dbPath, "sbx", *sbxBin, "demo", *demo, "os", runtime.GOOS, "arch", runtime.GOARCH)
+
+	if err := run(*dbPath, *sbxBin, *demo, path); err != nil {
+		slog.Error("exiting", "err", err)
+		closer.Close()
 		fmt.Fprintln(os.Stderr, "sbx-projects:", err)
+		if path != "" {
+			fmt.Fprintln(os.Stderr, "sbx-projects: details in", path)
+		}
 		os.Exit(1)
 	}
+	slog.Info("exiting")
 }
 
-func run(dbPath, sbxBin string, demo bool) error {
+func run(dbPath, sbxBin string, demo bool, logPath string) error {
 	var be sbx.Backend
 	if demo {
 		dbPath = ":memory:"
@@ -65,7 +86,11 @@ func run(dbPath, sbxBin string, demo bool) error {
 	if demo {
 		start = demoStartPath
 	}
-	m, err := ui.New(ui.Options{Backend: be, Store: st, Mock: demo, StartPath: start, HostCPUs: runtime.NumCPU(), HostMemMiB: hostMemMiB()})
+	var logs func() []applog.Entry
+	if logPath != "" {
+		logs = applog.Recent
+	}
+	m, err := ui.New(ui.Options{Backend: be, Store: st, Mock: demo, StartPath: start, HostCPUs: runtime.NumCPU(), HostMemMiB: hostMemMiB(), LogPath: logPath, Logs: logs})
 	if err != nil {
 		return err
 	}
@@ -85,7 +110,9 @@ func addIfRepo(st *store.Store, path string) {
 	if h, err := exec.Command("git", "-C", root, "symbolic-ref", "--short", "refs/remotes/origin/HEAD").Output(); err == nil {
 		p.DefaultBranch = strings.TrimPrefix(strings.TrimSpace(string(h)), "origin/")
 	}
-	_, _ = st.AddProject(p)
+	if _, err := st.AddProject(p); err != nil {
+		slog.Warn("add the first project", "path", root, "err", err)
+	}
 }
 
 func lastElem(p string) string {
