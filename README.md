@@ -225,7 +225,7 @@ task web:dev  # hot reload, proxying /v1 to sbx-projects api on :7443
 ./sbx-projects api devices rm NAME # sign one out
 ```
 
-Flags: `--listen` (default `:7443`), `--name` (what the app calls this Mac, the host name by default), `--pair`, and the TUI's `--db`, `--sbx` and `--demo`. Pairing opens by itself while no phone is paired.
+Flags: `--listen` (default `:7443`), `--name` (what the app calls this Mac, the host name by default), `--pair`, and the TUI's `--db`, `--sbx`, `--demo`, `--log` and `--log-level`. Pairing opens by itself while no phone is paired. The server writes its own debug log, printed with its addresses, which also records the HTTP server's errors; connections from clients that reject the certificate are only logged at `--log-level debug`.
 
 - **Pairing.** The terminal shows a QR code and an 8-character code, valid once for 5 minutes. The QR code carries the Mac's addresses and its certificate's fingerprint. Five wrong codes close pairing.
 - **TLS.** The first run makes a self-signed certificate in `~/.local/share/sbx-projects/api/`. Phones pin its SHA-256 fingerprint, so it is never renewed; deleting it means pairing again.

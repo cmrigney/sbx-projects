@@ -6,14 +6,15 @@ import (
 	"errors"
 	"flag"
 	"fmt"
-	"io"
 	"log"
+	"log/slog"
 	"net"
 	"net/http"
 	"net/url"
 	"os"
 	"os/signal"
 	"path/filepath"
+	"runtime"
 	"strconv"
 	"strings"
 	"syscall"
@@ -22,6 +23,7 @@ import (
 	"rsc.io/qr"
 
 	"github.com/cmrigney/sbx-projects/internal/api"
+	"github.com/cmrigney/sbx-projects/internal/applog"
 	"github.com/cmrigney/sbx-projects/internal/core"
 	"github.com/cmrigney/sbx-projects/internal/store"
 	"github.com/cmrigney/sbx-projects/internal/webui"
@@ -48,6 +50,9 @@ func runAPICmd(args []string) error {
 	pair := fs.Bool("pair", false, "show a code to pair a new device")
 	host, _ := os.Hostname()
 	name := fs.String("name", strings.TrimSuffix(host, ".local"), "name the app shows for this machine")
+	logPath := fs.String("log", os.Getenv("SBX_PROJECTS_LOG"), `debug log file; empty for a new one in the temp directory, "off" for none`)
+	logLevel := slog.LevelInfo
+	fs.TextVar(&logLevel, "log-level", logLevel, "debug log level: debug, info, warn or error")
 	_ = fs.Parse(args)
 
 	// Paired devices and the certificate outlive --demo's in-memory data.
@@ -64,7 +69,25 @@ func runAPICmd(args []string) error {
 		os.Exit(2)
 	}
 
-	st, be, err := openBackend(*dbPath, *sbxBin, *demo)
+	path, closer, err := applog.Open(*logPath, logLevel)
+	if err != nil {
+		fmt.Fprintln(os.Stderr, "sbx-projects api: no debug log:", err)
+	}
+	defer closer.Close()
+	slog.Info("starting api", "args", args, "db", *dbPath, "sbx", *sbxBin, "demo", *demo, "listen", *listen, "os", runtime.GOOS, "arch", runtime.GOARCH)
+	if err := serveAPI(devices, dir, *dbPath, *sbxBin, *demo, *listen, *pair, *name, path); err != nil {
+		slog.Error("exiting", "err", err)
+		if path != "" {
+			err = fmt.Errorf("%w; details in %s", err, path)
+		}
+		return err
+	}
+	slog.Info("exiting")
+	return nil
+}
+
+func serveAPI(devices *api.Devices, dir, dbPath, sbxBin string, demo bool, listen string, pair bool, name, logPath string) error {
+	st, be, err := openBackend(dbPath, sbxBin, demo)
 	if err != nil {
 		return err
 	}
@@ -73,15 +96,15 @@ func runAPICmd(args []string) error {
 	if err != nil {
 		return err
 	}
-	mon, err := api.NewMonitor(&core.Service{Backend: be, Store: st, Demo: *demo})
+	mon, err := api.NewMonitor(&core.Service{Backend: be, Store: st, Demo: demo})
 	if err != nil {
 		return err
 	}
-	srv := &api.Server{Monitor: mon, Devices: devices, ID: fp[:16], Name: *name}
+	srv := &api.Server{Monitor: mon, Devices: devices, ID: fp[:16], Name: name}
 
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
-	ln, err := net.Listen("tcp", *listen)
+	ln, err := net.Listen("tcp", listen)
 	if err != nil {
 		return err
 	}
@@ -92,7 +115,7 @@ func runAPICmd(args []string) error {
 	if ip := ln.Addr().(*net.TCPAddr).IP; !ip.IsUnspecified() {
 		addrs = []string{ip.String()}
 	}
-	fmt.Printf("sbx-projects API for %s\n", *name)
+	fmt.Printf("sbx-projects API for %s\n", name)
 	for _, a := range addrs {
 		fmt.Printf("  https://%s:%d\n", a, port)
 	}
@@ -100,14 +123,17 @@ func runAPICmd(args []string) error {
 		fmt.Printf("  No LAN address found; listening on %s\n", ln.Addr())
 	}
 	fmt.Printf("  Certificate %s\n", api.FormatFingerprint(fp)[:47]+"…")
-	if _, err := api.Advertise(ctx, *name, port, []string{"id=" + srv.ID, "v=" + strconv.Itoa(api.Version)}); err != nil {
+	if _, err := api.Advertise(ctx, name, port, []string{"id=" + srv.ID, "v=" + strconv.Itoa(api.Version)}); err != nil {
 		fmt.Printf("  Not advertised on the network: %s\n", err)
 	}
-	if *demo {
+	if demo {
 		fmt.Println("  Serving demo data")
 	}
+	if logPath != "" {
+		fmt.Printf("  Debug log at %s\n", logPath)
+	}
 
-	if *pair || len(devices.List()) == 0 {
+	if pair || len(devices.List()) == 0 {
 		showPairing(devices, srv, fp, addrs, port)
 	} else {
 		fmt.Printf("\n%d paired device(s). Run with --pair to add another.\n", len(devices.List()))
@@ -120,8 +146,7 @@ func runAPICmd(args []string) error {
 		Handler:           mux,
 		TLSConfig:         &tls.Config{Certificates: []tls.Certificate{cert}, MinVersion: tls.VersionTLS12},
 		ReadHeaderTimeout: 10 * time.Second,
-		// TLS errors are mostly phones that haven't pinned this certificate.
-		ErrorLog: log.New(io.Discard, "", 0),
+		ErrorLog:          log.New(httpErrorLog{}, "", 0),
 	}
 	go func() {
 		<-ctx.Done()
@@ -133,6 +158,23 @@ func runAPICmd(args []string) error {
 		return err
 	}
 	return nil
+}
+
+// httpErrorLog sends the HTTP server's errors to the debug log. Clients that
+// hang up before sending a request are mostly phones and browsers that
+// haven't pinned this certificate: with TLS 1.3 the server sees that as a
+// failed HTTP/2 preface rather than a failed handshake. Those only show at
+// debug level.
+type httpErrorLog struct{}
+
+func (httpErrorLog) Write(p []byte) (int, error) {
+	msg := strings.TrimSpace(string(p))
+	level := slog.LevelWarn
+	if strings.Contains(msg, "TLS handshake error") || strings.Contains(msg, "error reading preface") {
+		level = slog.LevelDebug
+	}
+	slog.Log(context.Background(), level, "http server", "err", msg)
+	return len(p), nil
 }
 
 // showPairing opens a pairing window and prints its code, as text and as a
