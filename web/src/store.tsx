@@ -256,12 +256,17 @@ export function AppProvider({ children }: { children: ReactNode }) {
   return <Ctx.Provider value={value}>{children}</Ctx.Provider>;
 }
 
+/** Whether a filter shows a sandbox. Null shows every sandbox but the parked ones. */
+export function shows(group: StatusGroup | null, s: Sandbox): boolean {
+  return group === null ? groupOf(s.state) !== "parked" : groupOf(s.state) === group;
+}
+
 /** The project's sandboxes in the TUI's order: by group, then newest. */
 export function sandboxesIn(all: Record<string, Sandbox>, project: Project, group: StatusGroup | null, query: string): Sandbox[] {
   const q = query.trim().toLowerCase();
   return Object.values(all)
     .filter((s) => s.projectId === project.id)
-    .filter((s) => group === null || groupOf(s.state) === group)
+    .filter((s) => shows(group, s))
     .filter(
       (s) =>
         !q ||

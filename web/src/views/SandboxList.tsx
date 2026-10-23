@@ -1,10 +1,11 @@
 import { useRef, useState } from "react";
-import { groupLabel, groups, groupOf, type Sandbox, type StatusGroup } from "../api";
-import { sandboxesIn, useApp } from "../store";
+import { groupLabel, groups, type Sandbox, type StatusGroup } from "../api";
+import { sandboxesIn, shows, useApp } from "../store";
 import { ChangeCounts, Empty, Icon, StatusMark, go, href, shortAgo, stateColor, useKeys, useTick } from "../components";
 
 export function SandboxList({ selected }: { selected?: string }) {
   const { projects, sandboxes, connection } = useApp();
+  // Null shows every sandbox but the parked ones, which have their own filter.
   const [filter, setFilter] = useState<StatusGroup | null>(null);
   const [query, setQuery] = useState("");
   const search = useRef<HTMLInputElement>(null);
@@ -50,7 +51,7 @@ export function SandboxList({ selected }: { selected?: string }) {
         <kbd className="hint">/</kbd>
       </label>
       <div className="filters" role="toolbar" aria-label="Filter">
-        <Filter label="All" group={null} filter={filter} setFilter={setFilter} />
+        <Filter label="Active" group={null} filter={filter} setFilter={setFilter} />
         {groups.map((g) => (
           <Filter key={g} label={groupLabel[g]} group={g} filter={filter} setFilter={setFilter} />
         ))}
@@ -82,7 +83,12 @@ export function SandboxList({ selected }: { selected?: string }) {
           Start an agent on a new branch with New.
         </Empty>
       )}
-      {live && Object.keys(sandboxes).length > 0 && sections.length === 0 && (
+      {live && Object.keys(sandboxes).length > 0 && sections.length === 0 && filter === null && !query.trim() && (
+        <Empty icon="prompt" title="Nothing active">
+          Every sandbox is parked. Choose Parked to see them.
+        </Empty>
+      )}
+      {live && Object.keys(sandboxes).length > 0 && sections.length === 0 && (filter !== null || query.trim()) && (
         <Empty icon="search" title="Nothing matches">
           Try another filter or search.
         </Empty>
@@ -104,8 +110,7 @@ function Filter({
   setFilter: (g: StatusGroup | null) => void;
 }) {
   const { sandboxes } = useApp();
-  const all = Object.values(sandboxes);
-  const n = group === null ? all.length : all.filter((s) => groupOf(s.state) === group).length;
+  const n = Object.values(sandboxes).filter((s) => shows(group, s)).length;
   const on = filter === group;
   return (
     <button className={`filter ${on ? "on" : ""} ${group ?? "all"}`} aria-pressed={on} onClick={() => setFilter(group)}>

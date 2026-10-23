@@ -3,6 +3,7 @@ import UIKit
 
 struct SandboxListView: View {
     @Environment(AppModel.self) private var app
+    /// Nil shows every sandbox but the parked ones, which have their own chip.
     @State private var filter: StatusGroup?
     @State private var query = ""
     @State private var showNew = false
@@ -64,7 +65,7 @@ struct SandboxListView: View {
                 path = []
                 showNew = false
             }
-            .overlay { EmptyList(visible: visibleCount) }
+            .overlay { EmptyList(visible: visibleCount, filter: filter, query: query) }
         }
     }
 }
@@ -73,6 +74,8 @@ private struct EmptyList: View {
     @Environment(AppModel.self) private var app
     /// How many rows the filter and search leave.
     let visible: Int
+    let filter: StatusGroup?
+    let query: String
 
     var body: some View {
         if app.connection != .live {
@@ -83,6 +86,9 @@ private struct EmptyList: View {
         } else if app.sandboxes.isEmpty {
             ContentUnavailableView("No sandboxes", systemImage: "terminal",
                                    description: Text("Tap + to start an agent on a new branch."))
+        } else if visible == 0 && filter == nil && query.isEmpty {
+            ContentUnavailableView("Nothing active", systemImage: "moon.zzz",
+                                   description: Text("Every sandbox is parked. Tap Parked to see them."))
         } else if visible == 0 {
             ContentUnavailableView("Nothing matches", systemImage: "magnifyingglass",
                                    description: Text("Try another filter or search."))
@@ -209,7 +215,7 @@ private struct FilterChips: View {
     var body: some View {
         ScrollView(.horizontal, showsIndicators: false) {
             HStack(spacing: 8) {
-                chip("All", nil)
+                chip("Active", nil)
                 ForEach(StatusGroup.allCases, id: \.self) { chip($0.label, $0) }
             }
             .padding(.horizontal, 16)

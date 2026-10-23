@@ -169,7 +169,7 @@ It looks like the [web app](#in-a-browser): the app icon's navy and mint, with a
 
 From the app you can:
 
-- Filter sandboxes by Needs you, Working and Ready, or search by title, branch or name.
+- Filter sandboxes by Needs you, Working and Ready, or search by title, branch or name. Parked sandboxes are hidden until you choose Parked.
 - Read an agent's activity, changed files and commits, and the full diff file by file.
 - Send the agent a message, or reply to its last answer.
 - Attach to the agent's terminal, as `Enter` does in the TUI, with a key bar for Ctrl, Esc, Tab and the arrows. **Detach** or **Ctrl+B, then d** returns to the sandbox; the agent keeps running.

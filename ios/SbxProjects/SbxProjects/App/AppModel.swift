@@ -345,11 +345,12 @@ final class AppModel {
     }
 
     /// The project's sandboxes in the TUI's order: by group, then newest.
+    /// A nil group is every sandbox that isn't parked.
     func sandboxes(in project: Project, group: StatusGroup?, matching query: String) -> [Sandbox] {
         let q = query.trimmingCharacters(in: .whitespaces)
         return sandboxes.values
             .filter { $0.projectId == project.id }
-            .filter { group == nil || $0.group == group }
+            .filter { Self.shows(group, $0) }
             .filter { q.isEmpty || $0.title.localizedCaseInsensitiveContains(q) || $0.name.localizedCaseInsensitiveContains(q) || ($0.branch ?? "").localizedCaseInsensitiveContains(q) }
             .sorted { a, b in
                 let ga = StatusGroup.allCases.firstIndex(of: a.group)!, gb = StatusGroup.allCases.firstIndex(of: b.group)!
@@ -360,6 +361,10 @@ final class AppModel {
     }
 
     func count(_ group: StatusGroup?) -> Int {
-        group == nil ? sandboxes.count : sandboxes.values.filter { $0.group == group }.count
+        sandboxes.values.filter { Self.shows(group, $0) }.count
+    }
+
+    private static func shows(_ group: StatusGroup?, _ sandbox: Sandbox) -> Bool {
+        group == nil ? sandbox.group != .parked : sandbox.group == group
     }
 }
