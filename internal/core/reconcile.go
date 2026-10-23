@@ -32,7 +32,7 @@ func (s *Service) Reconcile(projects []store.Project, recs map[string]*store.San
 	}
 	for name := range recs {
 		if !listed[name] && (keep == nil || !keep(name)) {
-			_ = s.Store.RemoveSandbox(name)
+			warn(s.Store.RemoveSandbox(name), "forget a sandbox sbx no longer lists", "sandbox", name)
 			r.Removed = append(r.Removed, name)
 		}
 	}
@@ -61,7 +61,9 @@ func (s *Service) Reconcile(projects []store.Project, recs map[string]*store.San
 			if l.CreatedAt != nil {
 				rec.CreatedAt = *l.CreatedAt
 			}
-			if err := s.Store.UpsertSandbox(rec); err == nil {
+			if err := s.Store.UpsertSandbox(rec); err != nil {
+				warn(err, "adopt a sandbox", "sandbox", l.Name, "project", p.Name)
+			} else {
 				r.Adopted++
 			}
 			continue
@@ -77,7 +79,7 @@ func (s *Service) Reconcile(projects []store.Project, recs map[string]*store.San
 func (s *Service) SaveProbe(rec *store.Sandbox, raw string, p agent.Probe) {
 	if rec.LastProbe != raw {
 		rec.LastProbe = raw
-		_ = s.Store.SaveProbe(rec.Name, raw, time.Now())
+		warn(s.Store.SaveProbe(rec.Name, raw, time.Now()), "save the probe", "sandbox", rec.Name)
 	}
 	changed := false
 	if p.Branch != "" && p.Branch != rec.Branch {
@@ -88,7 +90,7 @@ func (s *Service) SaveProbe(rec *store.Sandbox, raw string, p agent.Probe) {
 		rec.Clone, changed = p.Clone, true
 	}
 	if changed {
-		_ = s.Store.UpsertSandbox(*rec)
+		warn(s.Store.UpsertSandbox(*rec), "save what the probe found", "sandbox", rec.Name)
 	}
 }
 
@@ -107,5 +109,5 @@ func (s *Service) MarkSeen(rec *store.Sandbox, p *agent.Probe) {
 		at = p.Recap.When
 	}
 	rec.SeenAt = at
-	_ = s.Store.SetSeen(rec.Name, at)
+	warn(s.Store.SetSeen(rec.Name, at), "mark the reply read", "sandbox", rec.Name)
 }

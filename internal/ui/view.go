@@ -108,6 +108,8 @@ func (m *Model) View() tea.View {
 			r := it.probe.Recap
 			m.overlayScroll(b, "Last reply from "+it.name()+" · "+agoPhrase(r.When), renderMarkdown(r.Text, w-4), w, &m.rsc)
 		}
+	case m.log != nil:
+		m.drawLog(b)
 	case m.diff != nil:
 		w := min(140, m.w-2)
 		lines := m.diffLines(w - 4)
@@ -720,6 +722,12 @@ func (m *Model) hints() []keyHint {
 		return []keyHint{{"j/k", "Scroll", nil}, {"esc", "Close", m.closeOverlay}}
 	case m.diff != nil:
 		return []keyHint{{"j/k", "Scroll", nil}, {"n/N", "Next or previous file", nil}, {"esc", "Close", m.closeOverlay}}
+	case m.log != nil:
+		filter := "Only warnings and errors"
+		if m.log.errsOnly {
+			filter = "Everything"
+		}
+		return []keyHint{{"j/k", "Scroll", nil}, {"e", filter, func() tea.Cmd { return m.logKey("e") }}, {"esc", "Close", m.closeOverlay}}
 	case m.modal != nil:
 		choose := keyHint{"←→", "Choose", nil}
 		switch m.modal.f {
@@ -912,7 +920,7 @@ func (m *Model) overlayScroll(b *Buf, title string, lines []Line, w int, scroll 
 }
 
 func (m *Model) closeOverlay() tea.Cmd {
-	m.help, m.modal, m.prompt, m.confirm, m.reply, m.diff = false, nil, nil, nil, false, nil
+	m.help, m.modal, m.prompt, m.confirm, m.reply, m.diff, m.log = false, nil, nil, nil, false, nil, nil
 	return nil
 }
 
@@ -937,7 +945,15 @@ func (m *Model) helpLines() []Line {
 	})...)
 	out = append(out, sec("Projects", [][2]string{
 		{"A", "Add a project (a git repo)"}, {"D", "Forget the current project"}, {"m", "Layout: per feature or one for the repo"},
-		{"K", "Default kits for new sandboxes"}, {"e", "Open the project in your editor"}, {"?  esc", "Show or hide this help"}, {"q", "Quit"},
+		{"K", "Default kits for new sandboxes"}, {"e", "Open the project in your editor"}, {"L", "Show the debug log"}, {"?  esc", "Show or hide this help"}, {"q", "Quit"},
 	})...)
+	out = append(out, L(B("Debug log", cFg)))
+	log := "off"
+	if m.logPath != "" {
+		log = tildePath(m.logPath) + "  (L to show)"
+	}
+	for _, t := range chop(log, max(10, min(66, m.w-2)-6)) {
+		out = append(out, L(S("  "+t, cDim)))
+	}
 	return out
 }

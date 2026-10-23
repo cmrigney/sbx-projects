@@ -8,6 +8,7 @@ package core
 
 import (
 	"context"
+	"log/slog"
 	"strings"
 
 	"github.com/cmrigney/sbx-projects/internal/agent"
@@ -34,6 +35,13 @@ type Step struct {
 	// Apply, when set, takes Run's output once it has succeeded. Callers run
 	// it on the goroutine that owns their records.
 	Apply func(out string)
+}
+
+// warn logs a store write that failed without stopping what made it.
+func warn(err error, what string, args ...any) {
+	if err != nil {
+		slog.Warn(what, append(args, "err", err)...)
+	}
 }
 
 // Run runs steps in order, stopping at the first error.

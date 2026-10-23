@@ -1,7 +1,9 @@
 package sbx
 
 import (
+	"bytes"
 	"context"
+	"log/slog"
 	"os"
 	"path/filepath"
 	"strings"
@@ -41,5 +43,31 @@ func TestMCPServersReadsTheJSONListing(t *testing.T) {
 	}
 	if len(list) != 2 || list[0].Name != "notion" || !list[0].Ready() || list[1].Ready() || list[1].NextStep != "sbx mcp auth linear" {
 		t.Fatalf("list = %+v", list)
+	}
+}
+
+func TestFailedCallLogsAllOfStderr(t *testing.T) {
+	dir := t.TempDir()
+	bin := filepath.Join(dir, "sbx")
+	if err := os.WriteFile(bin, []byte("#!/bin/sh\necho first problem >&2\necho last problem >&2\nexit 3\n"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	var log bytes.Buffer
+	prev := slog.Default()
+	slog.SetDefault(slog.New(slog.NewTextHandler(&log, nil)))
+	t.Cleanup(func() { slog.SetDefault(prev) })
+
+	_, err := NewCLI(bin).Exec(context.Background(), "box", "secret prompt")
+	if err == nil || !strings.Contains(err.Error(), "last problem") {
+		t.Fatalf("err = %v", err)
+	}
+	got := log.String()
+	for _, want := range []string{"sbx failed", "first problem", "last problem", "exit status 3", "stdin_bytes=13"} {
+		if !strings.Contains(got, want) {
+			t.Errorf("log missing %q:\n%s", want, got)
+		}
+	}
+	if strings.Contains(got, "secret prompt") {
+		t.Errorf("log has the script:\n%s", got)
 	}
 }

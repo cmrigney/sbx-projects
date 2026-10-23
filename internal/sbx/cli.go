@@ -6,8 +6,12 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"log/slog"
 	"os/exec"
 	"strings"
+	"time"
+
+	"github.com/cmrigney/sbx-projects/internal/applog"
 )
 
 type CLI struct {
@@ -29,7 +33,13 @@ func (c *CLI) run(ctx context.Context, stdin string, args ...string) (string, er
 	var out, errb bytes.Buffer
 	cmd.Stdout = &out
 	cmd.Stderr = &errb
-	if err := cmd.Run(); err != nil {
+	start := time.Now()
+	err := cmd.Run()
+	// Scripts on stdin carry prompts, so only their size is logged.
+	attrs := []any{"args", args, "stdin_bytes", len(stdin), "took", time.Since(start).Round(time.Millisecond)}
+	if err != nil {
+		slog.Error("sbx failed", append(attrs, "err", err,
+			"stderr", applog.Tail(errb.String(), 4096), "stdout", applog.Tail(out.String(), 1024))...)
 		msg := strings.TrimSpace(errb.String())
 		if msg == "" {
 			msg = strings.TrimSpace(out.String())
@@ -39,7 +49,22 @@ func (c *CLI) run(ctx context.Context, stdin string, args ...string) (string, er
 		}
 		return out.String(), fmt.Errorf("sbx %s: %w", args[0], err)
 	}
+	level := slog.LevelDebug
+	if changes(args) {
+		level = slog.LevelInfo
+	}
+	slog.Log(context.Background(), level, "sbx ran", attrs...)
 	return out.String(), nil
+}
+
+// changes reports whether the call changes a sandbox, as opposed to the
+// listing and probing that runs every few seconds.
+func changes(args []string) bool {
+	switch args[0] {
+	case "run", "stop", "rm":
+		return true
+	}
+	return false
 }
 
 func (c *CLI) List(ctx context.Context) ([]Sandbox, error) {
@@ -120,6 +145,7 @@ func (c *CLI) Exec(ctx context.Context, name, script string) (string, error) {
 }
 
 func (c *CLI) Interactive(name string, argv ...string) *exec.Cmd {
+	slog.Info("sbx interactive", "sandbox", name, "argv", argv)
 	return exec.Command(c.Bin, append([]string{"exec", "-it", name}, argv...)...)
 }
 

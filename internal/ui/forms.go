@@ -686,6 +686,8 @@ func (m *Model) onKey(k tea.KeyPressMsg) tea.Cmd {
 			m.help = false
 		}
 		return nil
+	case m.log != nil:
+		return m.logKey(key)
 	case m.diff != nil:
 		d := m.diff
 		switch key {
@@ -803,6 +805,8 @@ func (m *Model) onKey(k tea.KeyPressMsg) tea.Cmd {
 		return m.openKits()
 	case "D", "shift+d":
 		return m.askRemoveProject()
+	case "L", "shift+l":
+		m.log = &logView{follow: true}
 	case "ctrl+r":
 		return m.listCmd()
 	}
