@@ -85,13 +85,17 @@ const stateWord: Record<SandboxState, string> = {
 
 /**
  * A sandbox's state as a tinted square, like the sandbox in the app icon.
- * A working agent shows a blinking cursor.
+ * A working agent shows three pulsing dots.
  */
 export function StatusMark({ state, size = 26 }: { state: SandboxState; size?: number }) {
   return (
     <span className={`mark mark-${state}`} style={{ width: size, height: size, color: stateColor[state] }} role="img" aria-label={groupLabel[groupOf(state)]}>
       {state === "working" || state === "starting" ? (
-        <span className="cursor" style={{ width: Math.round(size * 0.3), height: Math.round(size * 0.55) }} />
+        <span className="dots" style={{ gap: Math.max(1, Math.round(size * 0.08)) }}>
+          {[0, 1, 2].map((i) => (
+            <span key={i} style={{ width: Math.max(2, Math.round(size * 0.14)), height: Math.max(2, Math.round(size * 0.14)) }} />
+          ))}
+        </span>
       ) : (
         <svg viewBox="0 0 24 24" width={size * 0.6} height={size * 0.6} aria-hidden>
           {glyph(state)}

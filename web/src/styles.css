@@ -620,11 +620,34 @@ kbd.hint {
   border-radius: 4px;
 }
 
-.cursor {
-  display: block;
-  border-radius: 1px;
+.dots {
+  display: flex;
+  align-items: center;
+}
+
+.dots > span {
+  border-radius: 50%;
   background: currentColor;
-  animation: blink 1.05s steps(1) infinite;
+  animation: dot 1.2s ease-in-out infinite;
+}
+.dots > span:nth-child(2) {
+  animation-delay: 0.2s;
+}
+.dots > span:nth-child(3) {
+  animation-delay: 0.4s;
+}
+
+@keyframes dot {
+  0%,
+  60%,
+  100% {
+    opacity: 0.3;
+    transform: translateY(0);
+  }
+  30% {
+    opacity: 1;
+    transform: translateY(-30%);
+  }
 }
 
 @keyframes blink {
@@ -666,7 +689,7 @@ kbd.hint {
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .cursor,
+  .dots > span,
   .host.connecting .dot {
     animation: none;
   }
