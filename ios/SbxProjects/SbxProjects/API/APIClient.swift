@@ -117,6 +117,20 @@ nonisolated final class APIClient: Sendable {
         try await perform(request("POST", "/v1/sandboxes", body: r))
     }
 
+    /// Opens the agent's terminal, as Enter attaches to it in the TUI.
+    /// Output arrives as binary frames; send keystrokes as binary frames and
+    /// resizes as JSON text. The session's delegate pins the certificate.
+    func terminal(_ name: String, cols: Int, rows: Int) -> URLSessionWebSocketTask {
+        var req = request("GET", "/v1/sandboxes/\(escape(name))/terminal?cols=\(cols)&rows=\(rows)")
+        req.setValue(Self.terminalProtocol, forHTTPHeaderField: "Sec-WebSocket-Protocol")
+        // An idle terminal is quiet for as long as the agent is; the pings
+        // both ways are what keep it open.
+        req.timeoutInterval = 90
+        return session.webSocketTask(with: req)
+    }
+
+    static let terminalProtocol = "sbxp-terminal"
+
     /// The change stream. Each event is one "data:" line, so reading line
     /// by line is enough; `lines` drops the blank lines between events.
     func events() -> AsyncThrowingStream<ServerEvent, Error> {

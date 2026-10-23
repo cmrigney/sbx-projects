@@ -12,6 +12,7 @@ struct SandboxDetailView: View {
     @State private var showReply = false
     @State private var diffPath: DiffTarget?
     @State private var confirmRemove = false
+    @State private var attached = false
     @FocusState private var composing: Bool
 
     enum Tab: String, CaseIterable {
@@ -43,6 +44,7 @@ struct SandboxDetailView: View {
             if let sandbox { ReplySheet(sandbox: sandbox) }
         }
         .sheet(item: $diffPath) { DiffView(name: name, jumpTo: $0.path) }
+        .fullScreenCover(isPresented: $attached) { TerminalScreen(name: name) }
     }
 
     private func load() async {
@@ -81,7 +83,13 @@ struct SandboxDetailView: View {
         }
         .scrollDismissesKeyboard(.interactively)
         .safeAreaInset(edge: .bottom) { Composer(sandbox: s, focused: $composing) }
-        .toolbar { ToolbarItem(placement: .topBarTrailing) { actions(s) } }
+        .toolbar {
+            ToolbarItemGroup(placement: .topBarTrailing) {
+                Button { attached = true } label: { Label("Attach", systemImage: "apple.terminal") }
+                    .disabled(s.busy)
+                actions(s)
+            }
+        }
         .confirmationDialog("Remove \(s.name)?", isPresented: $confirmRemove, titleVisibility: .visible) {
             Button("Remove", role: .destructive) { Task { await app.remove(s.name) } }
         } message: {

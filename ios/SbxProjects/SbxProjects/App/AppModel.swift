@@ -279,6 +279,10 @@ final class AppModel {
         try await api().options(project: project)
     }
 
+    func terminal(_ name: String, cols: Int, rows: Int) throws -> URLSessionWebSocketTask {
+        try api().terminal(name, cols: cols, rows: rows)
+    }
+
     func markSeen(_ name: String) async {
         if let s = try? await api().markSeen(name) {
             sandboxes[s.name] = s
