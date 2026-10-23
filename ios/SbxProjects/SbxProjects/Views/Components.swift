@@ -71,7 +71,7 @@ extension SandboxState {
 }
 
 /// A sandbox's state as a tinted square, like the sandbox in the app icon.
-/// A working agent shows a blinking cursor.
+/// A working agent shows three pulsing dots.
 struct StatusBadge: View {
     let state: SandboxState
     var size: CGFloat = 26
@@ -82,7 +82,7 @@ struct StatusBadge: View {
         Group {
             switch state {
             case .working, .starting:
-                BlinkingCursor(width: (size * 0.3).rounded(), height: (size * 0.55).rounded())
+                PulsingDots(dot: max(2, (size * 0.14).rounded()), gap: max(1, (size * 0.08).rounded()))
             case .idle:
                 Circle().frame(width: size * 0.22, height: size * 0.22)
             default:
@@ -107,24 +107,40 @@ struct StatusBadge: View {
     }
 }
 
-/// A terminal's block cursor, blinking unless motion is reduced.
-struct BlinkingCursor: View {
-    let width: CGFloat
-    let height: CGFloat
+/// Three dots that rise and brighten in turn, unless motion is reduced.
+struct PulsingDots: View {
+    let dot: CGFloat
+    let gap: CGFloat
 
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     var body: some View {
-        TimelineView(.periodic(from: .now, by: 0.525)) { ctx in
-            let on = reduceMotion || Int(ctx.date.timeIntervalSinceReferenceDate / 0.525) % 2 == 0
-            RoundedRectangle(cornerRadius: 1)
-                .frame(width: width, height: height)
-                .opacity(on ? 1 : 0)
+        TimelineView(.animation(paused: reduceMotion)) { ctx in
+            let t = ctx.date.timeIntervalSinceReferenceDate
+            HStack(spacing: gap) {
+                ForEach(0..<3) { i in
+                    let lift = reduceMotion ? 0 : Self.lift(t - Double(i) * 0.2)
+                    Circle()
+                        .frame(width: dot, height: dot)
+                        .opacity(reduceMotion ? 1 : 0.3 + 0.7 * lift)
+                        .offset(y: -0.3 * dot * lift)
+                }
+            }
         }
+    }
+
+    /// 0 at rest, 1 at the top: up over the first 30% of each 1.2s beat,
+    /// down over the next 30%, then still.
+    private static func lift(_ t: Double) -> Double {
+        let p = (t / 1.2).truncatingRemainder(dividingBy: 1)
+        let x = (p < 0 ? p + 1 : p) / 0.3
+        guard x < 2 else { return 0 }
+        let u = x < 1 ? x : 2 - x
+        return u * u * (3 - 2 * u)
     }
 }
 
-/// The state in words beside its mark: "▍WORKING".
+/// The state in words beside its mark: "··· WORKING".
 struct StatusTag: View {
     let state: SandboxState
 
