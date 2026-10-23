@@ -19,34 +19,45 @@ struct PairingView: View {
             List {
                 Section {
                     VStack(alignment: .leading, spacing: 10) {
-                        Image(systemName: "terminal.fill")
-                            .font(.system(size: 34))
-                            .foregroundStyle(.tint)
+                        Text(">_")
+                            .font(.title2.monospaced().weight(.bold))
+                            .foregroundStyle(Theme.accent)
+                            .frame(width: 52, height: 52)
+                            .background(Theme.accent.opacity(0.12), in: RoundedRectangle(cornerRadius: 12, style: .continuous))
+                            .overlay(RoundedRectangle(cornerRadius: 12, style: .continuous).strokeBorder(Theme.accent.opacity(0.35), lineWidth: 1))
+                            .accessibilityHidden(true)
                         Text(adding ? "Connect another Mac" : "Connect to your Mac")
                             .font(.title2.bold())
+                            .foregroundStyle(Theme.text)
                         Text("On your Mac, run this in a terminal, then scan the code it shows.")
-                            .foregroundStyle(.secondary)
-                        Text("sbx-projects api --pair")
-                            .font(.callout.monospaced())
-                            .padding(.horizontal, 10)
-                            .padding(.vertical, 6)
-                            .background(Color(.tertiarySystemFill), in: RoundedRectangle(cornerRadius: 8))
-                            .textSelection(.enabled)
+                            .foregroundStyle(Theme.muted)
+                        HStack(spacing: 8) {
+                            Text("$").foregroundStyle(Theme.dim)
+                            Text("sbx-projects api --pair").foregroundStyle(Theme.text)
+                        }
+                        .font(.callout.monospaced())
+                        .padding(.horizontal, 12)
+                        .padding(.vertical, 8)
+                        .background(Theme.bg, in: RoundedRectangle(cornerRadius: 8, style: .continuous))
+                        .overlay(RoundedRectangle(cornerRadius: 8, style: .continuous).strokeBorder(Theme.line, lineWidth: 1))
+                        .textSelection(.enabled)
                     }
                     .padding(.vertical, 8)
                 }
+                .listRowBackground(Theme.panel)
 
                 Section {
                     Button { scanning = true } label: {
                         Label("Scan pairing code", systemImage: "qrcode.viewfinder")
                     }
                 }
+                .listRowBackground(Theme.panel)
 
                 Section {
                     if app.browser.found.isEmpty {
                         HStack(spacing: 10) {
                             ProgressView()
-                            Text("Looking for Macs running sbx-projects api").foregroundStyle(.secondary)
+                            Text("Looking for Macs running sbx-projects api").foregroundStyle(Theme.muted)
                         }
                     }
                     ForEach(app.browser.found) { mac in
@@ -54,13 +65,15 @@ struct PairingView: View {
                             HStack {
                                 Label(mac.name, systemImage: "laptopcomputer")
                                 Spacer()
-                                Image(systemName: "chevron.right").font(.footnote.weight(.semibold)).foregroundStyle(.tertiary)
+                                Image(systemName: "chevron.right").font(.footnote.weight(.semibold)).foregroundStyle(Theme.dim)
                             }
                         }
                         .tint(.primary)
                     }
                 } header: {
                     Text("On this network")
+                        .font(.system(size: 11.5, weight: .medium, design: .monospaced))
+                        .tracking(0.7)
                 } footer: {
                     if let error = app.browser.error {
                         Text("\(error) Check that Local Network access is on for sbx-projects in Settings.")
@@ -68,7 +81,9 @@ struct PairingView: View {
                         Text("Pick a Mac to type its code instead of scanning.")
                     }
                 }
+                .listRowBackground(Theme.panel)
             }
+            .themedList()
             .navigationTitle(adding ? "Pair Another Mac" : "sbx-projects")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
@@ -127,37 +142,41 @@ private struct EnterCodeView: View {
     var body: some View {
         NavigationStack {
             Form {
-                if let fingerprint, address != nil {
-                    Section {
-                        Text(formatFingerprint(fingerprint))
-                            .font(.callout.monospaced())
-                            .textSelection(.enabled)
-                    } header: {
-                        Text("Certificate")
-                    } footer: {
-                        Text("This should match the Certificate line in the terminal on \(mac.name). If it doesn't, something else on the network is answering; don't pair.")
+                Group {
+                    if let fingerprint, address != nil {
+                        Section {
+                            Text(formatFingerprint(fingerprint))
+                                .font(.callout.monospaced())
+                                .textSelection(.enabled)
+                        } header: {
+                            Text("Certificate")
+                        } footer: {
+                            Text("This should match the Certificate line in the terminal on \(mac.name). If it doesn't, something else on the network is answering; don't pair.")
+                        }
+                        Section {
+                            TextField("XXXX-XXXX", text: $code)
+                                .font(.title3.monospaced())
+                                .textInputAutocapitalization(.characters)
+                                .autocorrectionDisabled()
+                                .focused($focused)
+                                .onSubmit(pair)
+                        } header: {
+                            Text("Pairing code")
+                        } footer: {
+                            Text("Shown under the QR code. It works once, for 5 minutes.")
+                        }
+                        if let e = app.pairingError {
+                            Section { Text(e).foregroundStyle(Theme.fail) }
+                        }
+                    } else if let error {
+                        Section { Text(error).foregroundStyle(Theme.fail) }
+                    } else {
+                        Section { HStack { ProgressView(); Text("Connecting to \(mac.name)").foregroundStyle(Theme.muted) } }
                     }
-                    Section {
-                        TextField("XXXX-XXXX", text: $code)
-                            .font(.title3.monospaced())
-                            .textInputAutocapitalization(.characters)
-                            .autocorrectionDisabled()
-                            .focused($focused)
-                            .onSubmit(pair)
-                    } header: {
-                        Text("Pairing code")
-                    } footer: {
-                        Text("Shown under the QR code. It works once, for 5 minutes.")
-                    }
-                    if let e = app.pairingError {
-                        Section { Text(e).foregroundStyle(.red) }
-                    }
-                } else if let error {
-                    Section { Text(error).foregroundStyle(.red) }
-                } else {
-                    Section { HStack { ProgressView(); Text("Connecting to \(mac.name)").foregroundStyle(.secondary) } }
                 }
+                .listRowBackground(Theme.panel)
             }
+            .themedList()
             .navigationTitle(mac.name)
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {

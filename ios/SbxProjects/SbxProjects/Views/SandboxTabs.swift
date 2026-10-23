@@ -9,58 +9,106 @@ struct ActivityTab: View {
     var body: some View {
         if let detail, !detail.activity.isEmpty {
             Card {
-                ForEach(Array(detail.activity.enumerated()), id: \.offset) { i, item in
-                    if i > 0 { Divider().padding(.leading, 60) }
-                    FeedRow(item: item)
+                VStack(alignment: .leading, spacing: 0) {
+                    ForEach(Array(detail.activity.enumerated()), id: \.offset) { _, item in
+                        FeedRow(item: item)
+                    }
+                }
+                .padding(.vertical, 6)
+                // The log's thread, through the glyphs.
+                .background(alignment: .leading) {
+                    Line()
+                        .stroke(Theme.line, style: StrokeStyle(lineWidth: 1, dash: [3, 3]))
+                        .frame(width: 1)
+                        .padding(.vertical, 16)
+                        .padding(.leading, FeedRow.glyphCenter)
                 }
             }
             if let at = detail.probedAt {
                 Text("Last seen \(at.formatted(.relative(presentation: .named))), while the sandbox was running.")
                     .font(.footnote)
-                    .foregroundStyle(.secondary)
+                    .foregroundStyle(Theme.muted)
             }
         } else if detail != nil {
             Text(sandbox.reportsActivity
                  ? "No activity yet. It appears once the agent starts working."
                  : "\(sandbox.agentLabel) doesn't report what it is doing.")
                 .font(.subheadline)
-                .foregroundStyle(.secondary)
+                .foregroundStyle(Theme.muted)
                 .frame(maxWidth: .infinity)
                 .padding(.vertical, 24)
         }
     }
 }
 
+/// A vertical line down the middle of its frame.
+private struct Line: Shape {
+    func path(in rect: CGRect) -> Path {
+        Path { p in
+            p.move(to: CGPoint(x: rect.midX, y: rect.minY))
+            p.addLine(to: CGPoint(x: rect.midX, y: rect.maxY))
+        }
+    }
+}
+
+/// One line of the activity log: when, a glyph for its kind, and what.
 private struct FeedRow: View {
     let item: FeedItem
 
+    /// Where the glyphs' centers sit, for the line through them.
+    static let glyphCenter: CGFloat = 8 + 40 + 8 + 10
+
     var body: some View {
-        HStack(alignment: .firstTextBaseline, spacing: 10) {
+        HStack(alignment: .top, spacing: 8) {
             Text(shortAgo(item.at))
-                .font(.caption)
-                .monospacedDigit()
-                .foregroundStyle(.secondary)
-                .frame(width: 38, alignment: .trailing)
-            if let path = item.path, !path.isEmpty {
-                Text("\(Text(item.text)) \(Text(path).font(.mono))")
-                    .foregroundStyle(color)
-            } else {
-                Text(item.text).foregroundStyle(color)
+                .font(.caption.monospaced())
+                .foregroundStyle(Theme.dim)
+                .frame(width: 40, alignment: .trailing)
+                .padding(.top, 2)
+            glyph
+            Group {
+                if let path = item.path, !path.isEmpty {
+                    Text("\(Text(item.text)) \(Text(path).font(.mono))")
+                } else {
+                    Text(item.text)
+                }
+            }
+            .font(.subheadline)
+            .foregroundStyle(color)
+            .frame(maxWidth: .infinity, alignment: .leading)
+        }
+        .padding(.leading, 8)
+        .padding(.trailing, 14)
+        .padding(.vertical, 7)
+    }
+
+    private var glyph: some View {
+        let shape = RoundedRectangle(cornerRadius: 5, style: .continuous)
+        let tinted = item.kind != .plain
+        return Group {
+            switch item.kind {
+            case .you: Image(systemName: "chevron.right").font(.system(size: 10, weight: .heavy))
+            case .good: Image(systemName: "checkmark").font(.system(size: 10, weight: .heavy))
+            case .warn: Image(systemName: "questionmark").font(.system(size: 10, weight: .heavy))
+            case .bad: Image(systemName: "xmark").font(.system(size: 10, weight: .heavy))
+            case .plain: Circle().frame(width: 4, height: 4)
             }
         }
-        .font(.subheadline)
-        .padding(.horizontal, 14)
-        .padding(.vertical, 9)
-        .frame(maxWidth: .infinity, alignment: .leading)
+        .foregroundStyle(tinted ? color : Theme.dim)
+        .frame(width: 20, height: 20)
+        .background(Theme.panel, in: shape)
+        .background(tinted ? color.opacity(0.14) : .clear, in: shape)
+        .overlay(shape.strokeBorder(tinted ? color.opacity(0.35) : Theme.line, lineWidth: 1))
+        .accessibilityHidden(true)
     }
 
     private var color: Color {
         switch item.kind {
-        case .you: .blue
-        case .good: .green
-        case .warn: .orange
-        case .bad: .red
-        case .plain: .primary
+        case .you: Theme.work
+        case .good: Theme.ready
+        case .warn: Theme.needs
+        case .bad: Theme.fail
+        case .plain: Theme.text
         }
     }
 }
@@ -77,14 +125,14 @@ struct ChangesTab: View {
             if detail.changes.isEmpty {
                 Text("No changes against \(detail.base) yet.")
                     .font(.subheadline)
-                    .foregroundStyle(.secondary)
+                    .foregroundStyle(Theme.muted)
                     .frame(maxWidth: .infinity)
                     .padding(.vertical, 24)
             } else {
                 summary(detail)
                 Card {
                     ForEach(Array(detail.changes.enumerated()), id: \.offset) { i, f in
-                        if i > 0 { Divider().padding(.leading, 14) }
+                        if i > 0 { RowDivider() }
                         Button { openDiff(f.path) } label: { FileRow(file: f) }
                             .buttonStyle(.plain)
                             .disabled(!sandbox.running && sandbox.clone)
@@ -93,19 +141,19 @@ struct ChangesTab: View {
                 if !sandbox.running && sandbox.clone {
                     Text("Resume the sandbox to see the full diff. These are the changes from when it last ran.")
                         .font(.footnote)
-                        .foregroundStyle(.secondary)
+                        .foregroundStyle(Theme.muted)
                 }
             }
             if !detail.commits.isEmpty {
-                Text("Commits").font(.footnote).textCase(.uppercase).foregroundStyle(.secondary).padding(.leading, 16)
+                SectionLabel(text: "Commits").padding(.top, 4)
                 Card {
                     ForEach(Array(detail.commits.enumerated()), id: \.offset) { i, c in
-                        if i > 0 { Divider().padding(.leading, 14) }
+                        if i > 0 { RowDivider() }
                         HStack(alignment: .firstTextBaseline, spacing: 10) {
-                            Text(c.hash).font(.caption.monospaced()).foregroundStyle(.secondary)
-                            Text(c.subject).font(.subheadline).lineLimit(2)
+                            Text(c.hash).font(.caption.monospaced()).foregroundStyle(Theme.accent)
+                            Text(c.subject).font(.subheadline).foregroundStyle(Theme.text).lineLimit(2)
                             Spacer(minLength: 4)
-                            Text(shortAgo(c.at)).font(.caption).foregroundStyle(.secondary)
+                            Text(shortAgo(c.at)).font(.caption.monospaced()).foregroundStyle(Theme.dim)
                         }
                         .padding(.horizontal, 14)
                         .padding(.vertical, 10)
@@ -116,29 +164,32 @@ struct ChangesTab: View {
                 HStack(spacing: 10) {
                     if sandbox.canPR {
                         Button { Task { await app.openPR(sandbox.name) } } label: {
-                            Text("Open draft PR").frame(maxWidth: .infinity)
+                            Label("Open draft PR", systemImage: "arrow.triangle.pull").frame(maxWidth: .infinity)
                         }
-                        .buttonStyle(.borderedProminent)
+                        .buttonStyle(PrimaryButtonStyle())
                     }
                     if sandbox.canCheckout {
                         Button { Task { await app.checkout(sandbox.name) } } label: {
-                            Text("Check out on Mac").frame(maxWidth: .infinity)
+                            Label("Check out on Mac", systemImage: "laptopcomputer").frame(maxWidth: .infinity)
                         }
-                        .buttonStyle(.bordered)
+                        .buttonStyle(SecondaryButtonStyle())
                     }
                 }
-                .controlSize(.large)
+                .labelStyle(.titleAndIcon)
+                .padding(.top, 4)
             }
         }
     }
 
     private func summary(_ d: SandboxDetail) -> some View {
         HStack(alignment: .firstTextBaseline) {
-            Text("\(d.changes.count) \(d.changes.count == 1 ? "file" : "files") against \(Text(d.base).font(.mono))")
+            Text("\(d.changes.count) \(d.changes.count == 1 ? "FILE" : "FILES") AGAINST \(Text(d.base).foregroundStyle(Theme.text))")
+                .font(.system(size: 11.5, weight: .medium, design: .monospaced))
+                .tracking(0.7)
+                .foregroundStyle(Theme.dim)
             Spacer()
-            ChangeCounts(added: sandbox.added, removed: sandbox.removed).fontWeight(.semibold)
+            ChangeCounts(added: sandbox.added, removed: sandbox.removed).font(.subheadline.weight(.semibold))
         }
-        .font(.subheadline)
     }
 }
 
@@ -156,43 +207,40 @@ private struct FileRow: View {
     }
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 6) {
-            HStack(alignment: .firstTextBaseline) {
-                Text("\(Text(dir).foregroundStyle(.secondary))\(Text(base))")
-                    .font(.mono)
-                    .lineLimit(1)
-                    .truncationMode(.head)
-                Spacer(minLength: 8)
-                if file.binary == true {
-                    Text("binary").font(.caption).foregroundStyle(.secondary)
-                } else {
-                    ChangeCounts(added: file.added, removed: file.removed).font(.caption)
-                }
+        HStack(alignment: .firstTextBaseline, spacing: 10) {
+            Text("\(Text(dir).foregroundStyle(Theme.dim))\(Text(base).foregroundStyle(Theme.text))")
+                .font(.mono)
+                .lineLimit(1)
+                .truncationMode(.head)
+            Spacer(minLength: 8)
+            if file.binary == true {
+                Text("binary").font(.caption.monospaced()).foregroundStyle(Theme.dim)
+            } else {
+                ChangeCounts(added: file.added, removed: file.removed).font(.caption)
+                DiffStat(added: file.added, removed: file.removed)
             }
-            ChangeBar(added: file.added, removed: file.removed)
         }
         .padding(.horizontal, 14)
-        .padding(.vertical, 10)
+        .padding(.vertical, 13)
         .contentShape(Rectangle())
     }
 }
 
-/// A file's added and removed lines as one green and red bar.
-private struct ChangeBar: View {
+/// Five blocks split by added and removed lines, as git's --stat draws them.
+private struct DiffStat: View {
     let added: Int
     let removed: Int
 
     var body: some View {
-        let total = max(added + removed, 1)
-        GeometryReader { geo in
-            HStack(spacing: 0) {
-                Rectangle().fill(.green).frame(width: geo.size.width * CGFloat(added) / CGFloat(total))
-                Rectangle().fill(.red)
+        let total = added + removed
+        let adds = total == 0 ? 0 : Int((5 * Double(added) / Double(total)).rounded())
+        HStack(spacing: 2) {
+            ForEach(0..<5, id: \.self) { i in
+                RoundedRectangle(cornerRadius: 1.5)
+                    .fill(total == 0 ? Theme.line : i < adds ? Theme.add : Theme.del)
+                    .frame(width: 7, height: 7)
             }
         }
-        .frame(height: 4)
-        .clipShape(Capsule())
-        .opacity(added + removed == 0 ? 0.2 : 1)
         .accessibilityHidden(true)
     }
 }
@@ -221,24 +269,23 @@ struct SetupTab: View {
         }
         Text("Kits and MCP servers are fixed when a sandbox is created.")
             .font(.footnote)
-            .foregroundStyle(.secondary)
-            .padding(.leading, 16)
+            .foregroundStyle(Theme.muted)
     }
 
     private func row(_ label: String, _ value: String, mono: Bool = false, last: Bool = false) -> some View {
         VStack(spacing: 0) {
             HStack(alignment: .firstTextBaseline) {
-                Text(label)
+                Text(label).foregroundStyle(Theme.text)
                 Spacer(minLength: 16)
                 Text(value)
                     .font(mono ? .mono : .body)
-                    .foregroundStyle(.secondary)
+                    .foregroundStyle(Theme.muted)
                     .multilineTextAlignment(.trailing)
                     .textSelection(.enabled)
             }
             .padding(.horizontal, 14)
             .padding(.vertical, 11)
-            if !last { Divider().padding(.leading, 14) }
+            if !last { RowDivider() }
         }
     }
 }

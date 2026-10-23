@@ -44,6 +44,7 @@ struct RootView: View {
                 }
             }
         }
+        .tint(Theme.accent)
         .overlay(alignment: .top) { ToastView() }
     }
 }
