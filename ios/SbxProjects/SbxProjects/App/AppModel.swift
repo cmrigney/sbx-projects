@@ -42,6 +42,17 @@ final class AppModel {
     /// Sandboxes with an action started from this device, whose outcome is
     /// shown as a toast.
     private var pending: Set<String> = []
+    /// Creations sent from this device that the Mac hasn't answered yet.
+    private var creating = 0
+    /// Outcomes of actions on sandboxes not in pending, kept while a
+    /// creation is unanswered: it can finish before its response arrives.
+    private var finishedEarly: [String: Toast] = [:]
+    /// Counts the stream's updates, so a response to a request sent before
+    /// one of them doesn't replace what it said.
+    private var streamSeq = 0
+    private var snapshotAt = 0
+    /// The update that last changed each sandbox, removals included.
+    private var updatedAt: [String: Int] = [:]
 
     init() {
         let saved = PairedServers.load()
@@ -116,16 +127,23 @@ final class AppModel {
     private func apply(_ event: ServerEvent) {
         switch event.type {
         case "snapshot":
+            streamSeq += 1
+            snapshotAt = streamSeq
+            updatedAt = [:]
             projects = event.projects ?? []
             sandboxes = Dictionary((event.sandboxes ?? []).map { ($0.name, $0) }, uniquingKeysWith: { _, new in new })
             listError = event.listError
             connection = .live
         case "sandbox":
             if let s = event.sandbox {
+                streamSeq += 1
+                updatedAt[s.name] = streamSeq
                 sandboxes[s.name] = s
             }
         case "removed":
             if let name = event.name {
+                streamSeq += 1
+                updatedAt[name] = streamSeq
                 sandboxes[name] = nil
             }
         case "projects":
@@ -135,8 +153,17 @@ final class AppModel {
             // clears, the states shown are the last ones seen.
             listError = event.listError
         case "action":
-            if let name = event.name, pending.remove(name) != nil || event.ok != true {
-                toast = Toast(message: event.message ?? "", ok: event.ok == true)
+            guard let name = event.name else { break }
+            let t = Toast(message: event.message ?? "", ok: event.ok == true)
+            if pending.remove(name) != nil {
+                toast = t
+            } else {
+                if !t.ok {
+                    toast = t
+                }
+                if creating > 0 {
+                    finishedEarly[name] = t
+                }
             }
         default:
             break
@@ -245,6 +272,7 @@ final class AppModel {
         sandboxes = [:]
         listError = nil
         pending = []
+        finishedEarly = [:]
         toast = nil
         connection = .connecting
         save()
@@ -284,9 +312,17 @@ final class AppModel {
     }
 
     func markSeen(_ name: String) async {
+        let mark = streamSeq
         if let s = try? await api().markSeen(name) {
-            sandboxes[s.name] = s
+            applyResponse(s, since: mark)
         }
+    }
+
+    /// Shows a sandbox a request returned, unless the stream has said
+    /// something newer about it since mark, when the request was sent.
+    private func applyResponse(_ s: Sandbox, since mark: Int) {
+        guard snapshotAt <= mark, (updatedAt[s.name] ?? 0) <= mark else { return }
+        sandboxes[s.name] = s
     }
 
     // MARK: Actions
@@ -295,10 +331,11 @@ final class AppModel {
     /// whether the Mac accepted it; how it ends arrives as a toast.
     @discardableResult
     private func run(_ name: String, _ fn: (APIClient) async throws -> Sandbox) async -> Bool {
+        let mark = streamSeq
         do {
             pending.insert(name)
             let s = try await fn(api())
-            sandboxes[s.name] = s
+            applyResponse(s, since: mark)
             return true
         } catch {
             pending.remove(name)
@@ -332,9 +369,24 @@ final class AppModel {
     }
 
     func create(_ r: CreateRequest) async throws -> Sandbox {
+        let mark = streamSeq
+        creating += 1
+        defer {
+            creating -= 1
+            if creating == 0 {
+                finishedEarly = [:]
+            }
+        }
         let s = try await api().create(r)
-        pending.insert(s.name)
-        sandboxes[s.name] = s
+        if let t = finishedEarly.removeValue(forKey: s.name) {
+            // A failure was shown when it arrived.
+            if t.ok {
+                toast = t
+            }
+        } else {
+            pending.insert(s.name)
+        }
+        applyResponse(s, since: mark)
         return s
     }
 

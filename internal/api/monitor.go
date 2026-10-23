@@ -64,17 +64,18 @@ func NewMonitor(svc *core.Service) (*Monitor, error) {
 	return m, nil
 }
 
-// reload reads projects and records from the store. Probes are kept.
+// reload reads projects and records from the store. Probes are kept. On
+// an error nothing changes.
 func (m *Monitor) reload() error {
 	ps, err := m.svc.Store.Projects()
 	if err != nil {
 		return err
 	}
-	m.projects = ps
 	recs, err := m.svc.Store.Sandboxes()
 	if err != nil {
 		return err
 	}
+	m.projects = ps
 	m.recs = map[string]*store.Sandbox{}
 	for i := range recs {
 		r := recs[i]
@@ -140,9 +141,11 @@ func (m *Monitor) list(ctx context.Context) {
 	for _, s := range sbxs {
 		m.live[s.Name] = s
 	}
-	// Projects can be added from the TUI while the API runs.
-	if ps, err := m.svc.Store.Projects(); err == nil && !reflect.DeepEqual(ps, m.projects) {
-		m.projects = ps
+	// Projects can be added or forgotten from the TUI while the API runs.
+	// Forgetting one deletes its sandboxes' records too, so the records are
+	// read again with the projects; otherwise the forgotten ones would stay
+	// here, and adding the project back couldn't adopt their sandboxes.
+	if ps, err := m.svc.Store.Projects(); err == nil && !reflect.DeepEqual(ps, m.projects) && m.reload() == nil {
 		m.broadcast(Event{Type: "projects", Projects: m.projectViews()})
 	}
 	r := m.svc.Reconcile(m.projects, m.recs, sbxs, func(name string) bool { return m.busy[name] != "" })

@@ -28,6 +28,7 @@ type fixture struct {
 	devs  *Devices
 	token string
 	p     store.Project
+	st    *store.Store
 }
 
 func newFixture(t *testing.T, seeds []sbx.MockSeed) *fixture {
@@ -58,7 +59,7 @@ func newFixtureWith(t *testing.T, seeds []sbx.MockSeed, wrap func(*sbx.Mock) sbx
 	devs, _ := LoadDevices(filepath.Join(t.TempDir(), "devices.json"))
 	srv := httptest.NewTLSServer((&Server{Monitor: mon, Devices: devs, ID: "abc", Name: "mac"}).Handler())
 	t.Cleanup(srv.Close)
-	f := &fixture{srv: srv, devs: devs, p: p}
+	f := &fixture{srv: srv, devs: devs, p: p, st: st}
 	code := devs.OpenPairing(time.Minute, nil)
 	var res struct{ Token string }
 	if st := f.do(t, "POST", "/v1/pair", `{"code":"`+code[:4]+"-"+code[4:]+`","device":"Phone"}`, &res); st != 200 || res.Token == "" {
@@ -238,6 +239,23 @@ func TestCreateRunsThroughToTheAgent(t *testing.T) {
 	f.do(t, "GET", "/v1/options?project=1", "", &opts)
 	if opts.Defaults.Models["claude"] != "opus" || strings.Join(opts.Defaults.MCPs, ",") != "notion" {
 		t.Fatalf("the project should remember the picks: %+v", opts.Defaults)
+	}
+}
+
+func TestForgettingAProjectElsewhereDropsItsRecords(t *testing.T) {
+	f := newFixture(t, []sbx.MockSeed{{Name: "claude-a", Agent: "claude", Workspace: "/src/repo", Running: true, AgentUp: true, Clone: true}})
+	f.waitFor(t, func(m map[string]SandboxView) bool { _, ok := m["claude-a"]; return ok })
+	// As the TUI does, in another process.
+	if err := f.st.RemoveProject(f.p.ID); err != nil {
+		t.Fatal(err)
+	}
+	f.waitFor(t, func(m map[string]SandboxView) bool { return len(m) == 0 })
+	if _, err := f.st.AddProject(store.Project{Name: "repo", Path: "/src/repo"}); err != nil {
+		t.Fatal(err)
+	}
+	got := f.waitFor(t, func(m map[string]SandboxView) bool { _, ok := m["claude-a"]; return ok })
+	if got["claude-a"].ProjectID == f.p.ID {
+		t.Fatalf("the sandbox should be adopted into the new project: %+v", got["claude-a"])
 	}
 }
 
