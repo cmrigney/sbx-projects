@@ -86,7 +86,11 @@ func run(dbPath, sbxBin string, demo bool, logPath string) error {
 	if demo {
 		start = demoStartPath
 	}
-	m, err := ui.New(ui.Options{Backend: be, Store: st, Mock: demo, StartPath: start, HostCPUs: runtime.NumCPU(), HostMemMiB: hostMemMiB(), LogPath: logPath})
+	var logs func() []applog.Entry
+	if logPath != "" {
+		logs = applog.Recent
+	}
+	m, err := ui.New(ui.Options{Backend: be, Store: st, Mock: demo, StartPath: start, HostCPUs: runtime.NumCPU(), HostMemMiB: hostMemMiB(), LogPath: logPath, Logs: logs})
 	if err != nil {
 		return err
 	}

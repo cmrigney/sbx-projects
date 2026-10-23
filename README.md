@@ -82,6 +82,7 @@ An orange **●** and bold sandbox title mean there’s an unread reply. Read it
 | `m` | Switch between per-feature and per-repository layouts |
 | `K` | Set default kits for new sandboxes |
 | `e` | Open the project in your local editor |
+| `L` | Show the debug log |
 | `?` | Show the keyboard reference |
 | `q` | Quit the dashboard |
 
@@ -109,7 +110,7 @@ An orange **●** and bold sandbox title mean there’s an unread reply. Read it
 
 Projects and sandbox metadata are stored in SQLite at `~/.local/share/sbx-projects/projects.db`, or `$XDG_DATA_HOME/sbx-projects/projects.db` when set. Demo mode does not use this database.
 
-**Debug log.** Each run writes a new log to the `sbx-projects` folder in your temp directory, and logs older than a week are deleted. The path is printed when the dashboard starts, again if it exits with an error, and at the bottom of the `?` help. The log records every error and status message, every `sbx` command that changes a sandbox, and the full error output of any `sbx` command that fails. With `--log-level debug` it also records the listing and status checks that run every few seconds. Scripts sent to sandboxes aren't logged, since they can contain your prompts.
+**Debug log.** Each run writes a new log to the `sbx-projects` folder in your temp directory, and logs older than a week are deleted. The path is printed when the dashboard starts, again if it exits with an error, and at the bottom of the `?` help. Press `L` to read the latest 500 entries without leaving the dashboard: it follows new entries as they arrive, puts each entry's details on their own lines, and `e` switches to only warnings and errors. The log records every error and status message, every `sbx` command that changes a sandbox, and the full error output of any `sbx` command that fails. With `--log-level debug` it also records the listing and status checks that run every few seconds. Scripts sent to sandboxes aren't logged, since they can contain your prompts.
 
 ## Requirements and limits
 

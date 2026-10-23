@@ -17,6 +17,7 @@ import (
 	tea "charm.land/bubbletea/v2"
 
 	"github.com/cmrigney/sbx-projects/internal/agent"
+	"github.com/cmrigney/sbx-projects/internal/applog"
 	"github.com/cmrigney/sbx-projects/internal/core"
 	"github.com/cmrigney/sbx-projects/internal/sbx"
 	"github.com/cmrigney/sbx-projects/internal/store"
@@ -59,6 +60,9 @@ type Options struct {
 	// LogPath is shown in the help, so users know where to look when
 	// something goes wrong. Empty when logging is off.
 	LogPath string
+	// Logs returns the latest log entries for the log view; nil when
+	// logging is off.
+	Logs func() []applog.Entry
 }
 
 type Model struct {
@@ -86,6 +90,7 @@ type Model struct {
 	hostCPUs   int
 	hostMemMiB int64
 	logPath    string
+	logs       func() []applog.Entry
 
 	P     int
 	sel   string
@@ -100,6 +105,7 @@ type Model struct {
 	reply   bool
 	rsc     int
 	diff    *diffView
+	log     *logView
 	modal   *newForm
 	prompt  *promptForm
 	confirm *confirmBox
@@ -118,7 +124,7 @@ func New(o Options) (*Model, error) {
 		recs: map[string]*store.Sandbox{}, live: map[string]sbx.Sandbox{},
 		probes: map[string]*agent.Probe{}, probing: map[string]bool{}, probeAt: map[string]time.Time{},
 		busy: map[string]string{}, noProbeUntil: map[string]time.Time{}, focus: focusList,
-		hostCPUs: o.HostCPUs, hostMemMiB: o.HostMemMiB, logPath: o.LogPath,
+		hostCPUs: o.HostCPUs, hostMemMiB: o.HostMemMiB, logPath: o.LogPath, logs: o.Logs,
 	}
 	if m.hostCPUs == 0 {
 		m.hostCPUs = runtime.NumCPU()
@@ -336,7 +342,9 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		if mo.Button == tea.MouseWheelUp {
 			d = -1
 		}
-		if m.diff != nil {
+		if m.log != nil {
+			m.log.scroll(d)
+		} else if m.diff != nil {
 			m.diff.sc = max(0, m.diff.sc+d)
 		} else if m.reply {
 			m.rsc = max(0, m.rsc+d)

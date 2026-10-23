@@ -23,6 +23,7 @@ const keepFor = 7 * 24 * time.Hour
 func Dir() string { return filepath.Join(os.TempDir(), "sbx-projects") }
 
 // Open makes a log at path the default slog logger and returns the path.
+// Entries also go to Recent.
 // An empty path picks a new file in Dir for this run and drops logs there
 // older than a week. With Off, or when the file can't be opened, logs are
 // discarded and the path is empty. The closer is never nil.
@@ -44,7 +45,7 @@ func Open(path string, level slog.Level) (string, io.Closer, error) {
 	if err != nil {
 		return "", none, fmt.Errorf("open the log: %w", err)
 	}
-	slog.SetDefault(slog.New(slog.NewTextHandler(f, &slog.HandlerOptions{Level: level})))
+	slog.SetDefault(slog.New(&keeper{next: slog.NewTextHandler(f, &slog.HandlerOptions{Level: level})}))
 	return path, f, nil
 }
 

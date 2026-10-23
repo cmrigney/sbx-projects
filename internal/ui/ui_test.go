@@ -3,7 +3,9 @@ package ui
 import (
 	"context"
 	"fmt"
+	"log/slog"
 	"regexp"
+	"slices"
 	"strings"
 	"testing"
 	"time"
@@ -11,6 +13,7 @@ import (
 	tea "charm.land/bubbletea/v2"
 
 	"github.com/cmrigney/sbx-projects/internal/agent"
+	"github.com/cmrigney/sbx-projects/internal/applog"
 	"github.com/cmrigney/sbx-projects/internal/sbx"
 	"github.com/cmrigney/sbx-projects/internal/store"
 )
@@ -538,5 +541,63 @@ func TestDiffOpensInAnOverlay(t *testing.T) {
 	drain(m, m.openDiff("b.go"))
 	if v := plain(); m.diff.sc == 0 || !strings.Contains(v, "old line 1") {
 		t.Fatal("opening at a file should scroll to it")
+	}
+}
+
+func TestLogOpensInAnOverlay(t *testing.T) {
+	m, _ := newTestModel(t)
+	m.Update(tea.WindowSizeMsg{Width: 150, Height: 30})
+	plain := func() string { return regexp.MustCompile(`\x1b\[[0-9;]*m`).ReplaceAllString(m.View().Content, "") }
+
+	m.onKey(tea.KeyPressMsg{Code: 'L', Text: "L"})
+	if !strings.Contains(plain(), "Logging is off") {
+		t.Fatal("with no log, the view should say logging is off")
+	}
+	m.onKey(tea.KeyPressMsg{Code: tea.KeyEscape})
+
+	at := time.Date(2026, 10, 23, 10, 55, 33, 0, time.Local)
+	entries := []applog.Entry{{Time: at, Level: slog.LevelError, Msg: "sbx failed", Attrs: []applog.Attr{
+		{Key: "args", Value: "[exec -i claude-a bash -s]"}, {Key: "stdout", Value: "@@branch\nfeat/a\n@@diff"}}}}
+	for i := range 40 {
+		entries = append(entries, applog.Entry{Time: at, Level: slog.LevelDebug, Msg: "sbx ran", Attrs: []applog.Attr{{Key: "i", Value: fmt.Sprint(i)}}})
+	}
+	m.logPath, m.logs = "/tmp/sbx-projects/run.log", func() []applog.Entry { return entries }
+
+	m.onKey(tea.KeyPressMsg{Code: 'L', Text: "L"})
+	if v := plain(); !strings.Contains(v, "i  39") || strings.Contains(v, "sbx failed") {
+		t.Fatal("the log should open on its newest entries")
+	}
+	entries = append(entries, applog.Entry{Time: at, Level: slog.LevelInfo, Msg: "newest"})
+	if !strings.Contains(plain(), "newest") {
+		t.Fatal("the log should follow new entries")
+	}
+	m.onKey(tea.KeyPressMsg{Code: 'g', Text: "g"})
+	entries = append(entries, applog.Entry{Time: at, Level: slog.LevelInfo, Msg: "later"})
+	v := plain()
+	for _, want := range []string{"/tmp/sbx-projects/run.log", "10:55:33  ERROR  sbx failed", "args  [exec -i claude-a bash -s]", "      @@branch", "      feat/a"} {
+		if !strings.Contains(v, want) {
+			t.Errorf("log missing %q", want)
+		}
+	}
+	if strings.Contains(v, "later") {
+		t.Error("scrolled up, the log should stay put")
+	}
+
+	m.onKey(tea.KeyPressMsg{Code: 'e', Text: "e"})
+	if v := plain(); !strings.Contains(v, "sbx failed") || strings.Contains(v, "sbx ran") || !strings.Contains(v, "warnings and errors") {
+		t.Fatal("e should show only warnings and errors")
+	}
+	m.onKey(tea.KeyPressMsg{Code: tea.KeyEscape})
+	if m.log != nil {
+		t.Fatal("esc should close the log")
+	}
+}
+
+func TestChop(t *testing.T) {
+	if got := chop("abcdefg", 3); !slices.Equal(got, []string{"abc", "def", "g"}) {
+		t.Fatalf("chop = %q", got)
+	}
+	if got := chop("", 3); !slices.Equal(got, []string{""}) {
+		t.Fatalf("chop empty = %q", got)
 	}
 }

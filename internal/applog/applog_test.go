@@ -1,9 +1,12 @@
 package applog
 
 import (
+	"errors"
+	"fmt"
 	"log/slog"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 	"testing"
 	"time"
@@ -64,5 +67,32 @@ func TestTail(t *testing.T) {
 	}
 	if got := Tail("ab", 3); got != "ab" {
 		t.Fatalf("Tail = %q", got)
+	}
+}
+
+func TestRecentKeepsTheLatestEntries(t *testing.T) {
+	_, c, err := Open(filepath.Join(t.TempDir(), "x.log"), slog.LevelInfo)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer c.Close()
+	t.Cleanup(func() { slog.SetDefault(slog.New(slog.DiscardHandler)) })
+
+	slog.Debug("below the level")
+	slog.With("sandbox", "box").WithGroup("g").Error("boom", "err", errors.New("bad"), "args", []string{"exec", "-i"})
+	for i := range keepRecent {
+		slog.Info("filler", "i", i)
+	}
+	got := Recent()
+	if len(got) != keepRecent || got[len(got)-1].Attrs[0].Value != fmt.Sprint(keepRecent-1) {
+		t.Fatalf("kept %d entries, last %+v", len(got), got[len(got)-1])
+	}
+
+	recent.entries = nil
+	slog.With("sandbox", "box").WithGroup("g").Error("boom", "err", errors.New("bad"), "args", []string{"exec", "-i"})
+	got = Recent()
+	want := []Attr{{"sandbox", "box"}, {"g.err", "bad"}, {"g.args", "[exec -i]"}}
+	if len(got) != 1 || got[0].Msg != "boom" || got[0].Level != slog.LevelError || !slices.Equal(got[0].Attrs, want) {
+		t.Fatalf("Recent = %+v", got)
 	}
 }
