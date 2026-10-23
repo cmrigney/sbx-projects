@@ -1,0 +1,8 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1024" height="1024" viewBox="0 0 1024 1024">
+  <title>sbx-projects app icon</title>
+  <desc>A mint sandbox with a terminal prompt on a dark navy background.</desc>
+  <path fill="#101E2B" d="M0 0h1024v1024H0z"/>
+  <path fill="#38B5A0" d="M246 370 490 237a46 46 0 0 1 44 0l244 133-266 146z"/>
+  <path fill="#85E8CD" d="M246 370h532v352a48 48 0 0 1-48 48H294a48 48 0 0 1-48-48z"/>
+  <path fill="none" stroke="#101E2B" stroke-width="38" stroke-linecap="round" stroke-linejoin="round" d="m354 486 86 76-86 76m166 0h132"/>
+</svg>

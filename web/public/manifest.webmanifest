@@ -1,0 +1,9 @@
+{
+  "name": "sbx-projects",
+  "short_name": "Sandboxes",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#0a141d",
+  "theme_color": "#101e2b",
+  "icons": [{ "src": "/icon.svg", "sizes": "any", "type": "image/svg+xml" }]
+}

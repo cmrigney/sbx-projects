@@ -1,0 +1,3 @@
+# Built from web/ by `task web`; .keep lets go:embed compile before the first build.
+dist/*
+!dist/.keep

@@ -6,7 +6,7 @@ Manage your coding agents in sandboxes through the `sbx` CLI from one terminal. 
 
 *The built-in demo: projects on the left, sandboxes in the middle, and activity for the selected sandbox on the right.*
 
-Away from your desk? The [iPhone app](#iphone-app-and-the-api) shows the same sandboxes and lets you answer your agents from your phone.
+Away from your desk? The [iPhone app](#iphone-app-and-the-api), or the same app [in any browser](#in-a-browser), shows the same sandboxes and lets you answer your agents from your phone.
 
 ## Get started
 
@@ -176,9 +176,36 @@ To try it, build the app from [`ios/`](ios/README.md) in Xcode, then run the API
 
 Your phone and Mac need to be on the same network. Drop `--demo` to use your real projects.
 
+### In a browser
+
+The same server also serves a web app that does everything the iPhone app does, for Android phones, iPads and other computers. Open the `https://…/#/pair?code=…` link `--pair` prints, or open the Mac's address and type the code. Your browser warns about the self-signed certificate the first time; accept it to continue. Each browser pairs as its own device, such as "Safari on iPhone", and `api devices rm` signs it out.
+
+It has a look of its own, taken from the app icon: navy and mint, with a terminal's type for branches, times and logs, in dark or light to match your system. On a phone it shows one screen at a time:
+
+<p align="center">
+  <img src="docs/images/web-sandboxes.png" width="200" alt="The sandbox list in a phone's browser, grouped by project, with filters for Needs you, Working and Ready">
+  <img src="docs/images/web-sandbox-detail.png" width="200" alt="A sandbox whose agent is asking a question, with its activity as a log and a message box">
+  <img src="docs/images/web-changes.png" width="200" alt="The Changes tab, listing each changed file and the sandbox's commits, with buttons to open a draft PR or check out on the Mac">
+  <img src="docs/images/web-reply.png" width="200" alt="An agent's last reply rendered as markdown in a sheet, with a box to reply">
+</p>
+
+On a wider screen the list and the open sandbox sit side by side, and the TUI's keys work: `n` new sandbox, `/` search, `1`–`3` tabs, `i` message, `t` last reply, `p` draft PR, `c` check out, `s`/`r` stop/resume and `x` remove.
+
+![The web app on a desktop browser, with the sandbox list on the left and the selected sandbox's question and activity on the right](docs/images/web-desktop.png)
+
+*The demo data in a browser: every sandbox and its status, an agent waiting on a question, its changed files and commits, another agent's last reply, and the two-pane layout on a wide screen.*
+
+The app lives in [`web/`](web/) (React and Vite) and is built into the binary. Build it before building `sbx-projects`; without it, the server answers `/` with how to build it:
+
+```sh
+task web      # npm ci and build into internal/webui/dist
+task build
+task web:dev  # hot reload, proxying /v1 to sbx-projects api on :7443
+```
+
 ### The API
 
-`sbx-projects api` serves the same projects and sandboxes over HTTPS on your local network, for the iOS app in [`ios/`](ios/README.md). It runs the TUI's list-and-probe loop without a terminal and goes through the same `internal/core` actions.
+`sbx-projects api` serves the same projects and sandboxes over HTTPS on your local network, for the iOS app in [`ios/`](ios/README.md) and the web app in [`web/`](web/). It runs the TUI's list-and-probe loop without a terminal and goes through the same `internal/core` actions.
 
 ```sh
 ./sbx-projects api --pair          # serve, and show a code to pair a phone

@@ -13,3 +13,17 @@ tasks:
     desc: Tidy go.mod/go.sum
     cmds:
       - go mod tidy
+
+  web:
+    desc: Build the web app into internal/webui/dist, which the binary embeds
+    dir: web
+    sources: [src/**/*, public/**/*, index.html, package.json, vite.config.ts]
+    cmds:
+      - npm ci
+      - npm run build
+
+  web:dev:
+    desc: Serve the web app with hot reload, proxying /v1 to sbx-projects api on :7443
+    dir: web
+    cmds:
+      - npm run dev

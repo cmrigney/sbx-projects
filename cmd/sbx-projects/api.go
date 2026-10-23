@@ -24,12 +24,13 @@ import (
 	"github.com/cmrigney/sbx-projects/internal/api"
 	"github.com/cmrigney/sbx-projects/internal/core"
 	"github.com/cmrigney/sbx-projects/internal/store"
+	"github.com/cmrigney/sbx-projects/internal/webui"
 )
 
 const pairFor = 5 * time.Minute
 
 const apiUsage = `Usage:
-  sbx-projects api [flags]           serve the API to the sbx-projects iOS app
+  sbx-projects api [flags]           serve the API to the iOS app and the web app
   sbx-projects api devices           list paired devices
   sbx-projects api devices rm NAME   sign a device out
 
@@ -112,8 +113,11 @@ func runAPICmd(args []string) error {
 		fmt.Printf("\n%d paired device(s). Run with --pair to add another.\n", len(devices.List()))
 	}
 
+	mux := http.NewServeMux()
+	mux.Handle("/v1/", srv.Handler())
+	mux.Handle("/", webui.Handler())
 	hs := &http.Server{
-		Handler:           srv.Handler(),
+		Handler:           mux,
 		TLSConfig:         &tls.Config{Certificates: []tls.Certificate{cert}, MinVersion: tls.VersionTLS12},
 		ReadHeaderTimeout: 10 * time.Second,
 		// TLS errors are mostly phones that haven't pinned this certificate.
@@ -161,6 +165,9 @@ func showPairing(devices *api.Devices, srv *api.Server, fp string, addrs []strin
 		printQR(c)
 	}
 	fmt.Printf("Or pick %s in the app and enter %s-%s\n", srv.Name, code[:4], code[4:])
+	if len(addrs) > 0 {
+		fmt.Printf("Or open https://%s:%d/#/pair?code=%s in a browser\n", addrs[0], port, code)
+	}
 	fmt.Printf("The code works once, for the next %d minutes.\n\n", int(pairFor/time.Minute))
 }
 
