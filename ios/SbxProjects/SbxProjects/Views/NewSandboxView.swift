@@ -35,49 +35,9 @@ struct NewSandboxView: View {
     var body: some View {
         NavigationStack {
             Form {
-                if app.projects.count > 1 {
-                    Picker("Project", selection: $projectID) {
-                        ForEach(app.projects) { Text($0.name).tag(Optional($0.id)) }
-                    }
-                }
-                Section {
-                    TextField("What should the agent do?", text: $task, axis: .vertical)
-                        .lineLimit(3...8)
-                } footer: {
-                    Text("The agent's first instruction, and the sandbox's title.")
-                }
-
-                Section("Start from") {
-                    Picker("Start from", selection: $source) {
-                        Text("New branch").tag("branch")
-                        Text("Pull request").tag("pr")
-                    }
-                    .pickerStyle(.segmented)
-                    .labelsHidden()
-                    TextField(source == "branch" ? "Branch (optional), like feat/policy-log-json" : "PR number or URL", text: $value)
-                        .font(.body.monospaced())
-                        .textInputAutocapitalization(.never)
-                        .autocorrectionDisabled()
-                        .keyboardType(source == "pr" ? .numbersAndPunctuation : .asciiCapable)
-                    if source == "branch" {
-                        Toggle("Private clone", isOn: $clone)
-                    }
-                }
-
-                if let options {
-                    agentSection(options)
-                    kitsSection
-                    mcpSection(options)
-                } else if let optionsError {
-                    Section { Label(optionsError, systemImage: "exclamationmark.triangle").foregroundStyle(.secondary) }
-                } else {
-                    Section { HStack { ProgressView(); Text("Loading the Mac's options").foregroundStyle(.secondary) } }
-                }
-
-                if let error {
-                    Section { Text(error).foregroundStyle(.red) }
-                }
+                Group { fields }.listRowBackground(Theme.panel)
             }
+            .themedList()
             .navigationTitle("New Sandbox")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
@@ -96,6 +56,52 @@ struct NewSandboxView: View {
             }
         }
         .interactiveDismissDisabled(creating)
+    }
+
+    @ViewBuilder
+    private var fields: some View {
+        if app.projects.count > 1 {
+            Picker("Project", selection: $projectID) {
+                ForEach(app.projects) { Text($0.name).tag(Optional($0.id)) }
+            }
+        }
+        Section {
+            TextField("What should the agent do?", text: $task, axis: .vertical)
+                .lineLimit(3...8)
+        } footer: {
+            Text("The agent's first instruction, and the sandbox's title.")
+        }
+
+        Section("Start from") {
+            Picker("Start from", selection: $source) {
+                Text("New branch").tag("branch")
+                Text("Pull request").tag("pr")
+            }
+            .pickerStyle(.segmented)
+            .labelsHidden()
+            TextField(source == "branch" ? "Branch (optional), like feat/policy-log-json" : "PR number or URL", text: $value)
+                .font(.body.monospaced())
+                .textInputAutocapitalization(.never)
+                .autocorrectionDisabled()
+                .keyboardType(source == "pr" ? .numbersAndPunctuation : .asciiCapable)
+            if source == "branch" {
+                Toggle("Private clone", isOn: $clone)
+            }
+        }
+
+        if let options {
+            agentSection(options)
+            kitsSection
+            mcpSection(options)
+        } else if let optionsError {
+            Section { Label(optionsError, systemImage: "exclamationmark.triangle").foregroundStyle(Theme.muted) }
+        } else {
+            Section { HStack { ProgressView(); Text("Loading the Mac's options").foregroundStyle(Theme.muted) } }
+        }
+
+        if let error {
+            Section { Text(error).foregroundStyle(Theme.fail) }
+        }
     }
 
     @ViewBuilder
@@ -143,7 +149,7 @@ struct NewSandboxView: View {
             if let servers = options.mcpServers {
                 if servers.isEmpty {
                     Text("No MCP servers are registered. Add them with sbx mcp add on your Mac.")
-                        .foregroundStyle(.secondary)
+                        .foregroundStyle(Theme.muted)
                 }
                 ForEach(servers) { server in
                     Toggle(isOn: Binding(get: { mcps.contains(server.name) }, set: { on in
@@ -154,14 +160,14 @@ struct NewSandboxView: View {
                             if !server.ready {
                                 Text(server.nextStep.map { "Needs setup. Run \($0) on your Mac" } ?? server.detail ?? server.status)
                                     .font(.footnote)
-                                    .foregroundStyle(.orange)
+                                    .foregroundStyle(Theme.needs)
                             }
                         }
                     }
                     .disabled(!server.ready && !mcps.contains(server.name))
                 }
             } else {
-                Text(options.mcpError ?? "Couldn't list the MCP servers.").foregroundStyle(.secondary)
+                Text(options.mcpError ?? "Couldn't list the MCP servers.").foregroundStyle(Theme.muted)
             }
         } header: {
             Text("MCP servers")

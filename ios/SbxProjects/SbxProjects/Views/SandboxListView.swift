@@ -17,32 +17,31 @@ struct SandboxListView: View {
         NavigationStack(path: $path) {
             List {
                 ConnectionBanner { addingMac = true }
-                Section {
-                    FilterChips(filter: $filter)
-                }
-                .listRowInsets(EdgeInsets())
-                .listRowBackground(Color.clear)
+                FilterChips(filter: $filter)
+                    .listRowInsets(EdgeInsets(top: 4, leading: 0, bottom: 8, trailing: 0))
+                    .listRowBackground(Color.clear)
+                    .listRowSeparator(.hidden)
 
                 ForEach(app.projects) { project in
                     let rows = app.sandboxes(in: project, group: filter, matching: query)
                     if !rows.isEmpty {
                         Section {
                             ForEach(rows) { s in
-                                NavigationLink(value: s.name) { SandboxRow(sandbox: s) }
+                                // The card is the link, without a chevron, as on the web.
+                                SandboxRow(sandbox: s)
+                                    .background { NavigationLink(value: s.name) { EmptyView() }.opacity(0) }
+                                    .listRowInsets(EdgeInsets(top: 16, leading: 32, bottom: 16, trailing: 30))
+                                    .listRowBackground(RailBackground(rail: s.state.color).padding(.horizontal, 16).padding(.vertical, 4))
+                                    .listRowSeparator(.hidden)
                             }
                         } header: {
-                            HStack {
-                                Text(project.name)
-                                Spacer()
-                                if let remote = project.remote {
-                                    Text(remote.replacingOccurrences(of: "github.com/", with: ""))
-                                }
-                            }
+                            ProjectHeader(project: project)
                         }
                     }
                 }
             }
-            .listStyle(.insetGrouped)
+            .listStyle(.plain)
+            .themedList()
             .animation(.default, value: filter)
             .navigationTitle("Sandboxes")
             .searchable(text: $query, prompt: "Title, branch or name")
@@ -108,12 +107,12 @@ private struct HostPill: View {
             Button(action: addMac) { Label("Pair Another Mac", systemImage: "plus") }
         } label: {
             HStack(spacing: 6) {
-                Circle()
+                RoundedRectangle(cornerRadius: 2.5)
                     .fill(color)
                     .frame(width: 8, height: 8)
                 Text(app.server?.name ?? "")
-                    .font(.subheadline)
-                    .foregroundStyle(.secondary)
+                    .font(.subheadline.weight(.medium).monospaced())
+                    .foregroundStyle(Theme.text)
             }
             .padding(.horizontal, 6)
             // Toolbar items are sized to fit only what they must show, which
@@ -125,9 +124,9 @@ private struct HostPill: View {
 
     private var color: Color {
         switch app.connection {
-        case .live: .green
-        case .connecting: .yellow
-        case .offline, .signedOut: .red
+        case .live: Theme.ready
+        case .connecting: Theme.needs
+        case .offline, .signedOut: Theme.fail
         }
     }
 }
@@ -142,46 +141,64 @@ struct ConnectionBanner: View {
     var body: some View {
         switch app.connection {
         case .offline(let message):
-            Section {
-                Label {
-                    VStack(alignment: .leading, spacing: 2) {
-                        Text("Can't reach \(app.server?.name ?? "the Mac")").font(.subheadline.weight(.semibold))
-                        Text("Check that sbx-projects api is running and you're on the same network. \(message)")
-                            .font(.footnote)
-                            .foregroundStyle(.secondary)
-                    }
-                } icon: {
-                    Image(systemName: "wifi.exclamationmark").foregroundStyle(.orange)
-                }
-            }
+            banner("Can't reach \(app.server?.name ?? "the Mac")",
+                   "Check that sbx-projects api is running and you're on the same network. \(message)",
+                   icon: "wifi.exclamationmark", color: Theme.needs)
         case .signedOut(let message):
-            Section {
-                Label {
-                    VStack(alignment: .leading, spacing: 6) {
-                        Text("Signed out").font(.subheadline.weight(.semibold))
-                        Text(message).font(.footnote).foregroundStyle(.secondary)
-                        Button("Pair again", action: pairAgain).font(.subheadline.weight(.semibold))
-                    }
-                } icon: {
-                    Image(systemName: "lock.slash").foregroundStyle(.red)
-                }
-            }
+            banner("Signed out", message, icon: "lock.slash", color: Theme.fail, action: ("Pair again", pairAgain))
         default:
             if let error = app.listError {
-                Section {
-                    Label {
-                        VStack(alignment: .leading, spacing: 2) {
-                            Text("Can't list sandboxes on \(app.server?.name ?? "the Mac")").font(.subheadline.weight(.semibold))
-                            Text("The states below may be out of date. \(error)")
-                                .font(.footnote)
-                                .foregroundStyle(.secondary)
-                        }
-                    } icon: {
-                        Image(systemName: "exclamationmark.triangle").foregroundStyle(.orange)
-                    }
+                banner("Can't list sandboxes on \(app.server?.name ?? "the Mac")",
+                       "The states below may be out of date. \(error)",
+                       icon: "exclamationmark.triangle", color: Theme.needs)
+            }
+        }
+    }
+
+    private func banner(_ title: String, _ message: String, icon: String, color: Color,
+                        action: (String, () -> Void)? = nil) -> some View {
+        HStack(alignment: .top, spacing: 12) {
+            Image(systemName: icon).foregroundStyle(color).frame(width: 22)
+            VStack(alignment: .leading, spacing: 3) {
+                Text(title).font(.subheadline.weight(.semibold)).foregroundStyle(Theme.text)
+                Text(message).font(.footnote).foregroundStyle(Theme.muted)
+                if let action {
+                    Button(action.0, action: action.1)
+                        .font(.subheadline.weight(.semibold))
+                        .foregroundStyle(color)
+                        .padding(.top, 4)
                 }
             }
         }
+        .listRowInsets(EdgeInsets(top: 16, leading: 32, bottom: 16, trailing: 28))
+        .listRowBackground(RailBackground(rail: color).padding(.horizontal, 16).padding(.vertical, 4))
+        .listRowSeparator(.hidden)
+    }
+}
+
+/// A project's name over its sandboxes, with where it's pushed.
+private struct ProjectHeader: View {
+    let project: Project
+
+    var body: some View {
+        HStack(alignment: .firstTextBaseline, spacing: 8) {
+            Image(systemName: "terminal.fill")
+                .font(.caption)
+                .foregroundStyle(Theme.accent)
+            Text(project.name)
+                .font(.subheadline.weight(.semibold))
+                .foregroundStyle(Theme.text)
+            Spacer(minLength: 8)
+            if let remote = project.remote {
+                Text(remote.replacingOccurrences(of: "github.com/", with: ""))
+                    .font(.caption.monospaced())
+                    .foregroundStyle(Theme.dim)
+                    .lineLimit(1)
+                    .truncationMode(.head)
+            }
+        }
+        .textCase(nil)
+        .padding(.top, 6)
     }
 }
 
@@ -195,24 +212,29 @@ private struct FilterChips: View {
                 chip("All", nil)
                 ForEach(StatusGroup.allCases, id: \.self) { chip($0.label, $0) }
             }
+            .padding(.horizontal, 16)
             .padding(.vertical, 4)
         }
     }
 
     private func chip(_ label: String, _ group: StatusGroup?) -> some View {
         let on = filter == group
+        let shape = Capsule()
         return Button {
             filter = group
         } label: {
-            HStack(spacing: 5) {
+            HStack(spacing: 6) {
                 Text(label).fontWeight(.medium)
-                Text("\(app.count(group))").foregroundStyle(on ? Color(.systemBackground).opacity(0.7) : .secondary)
+                Text("\(app.count(group))")
+                    .font(.caption.monospaced())
+                    .foregroundStyle(on ? Theme.accent : Theme.dim)
             }
             .font(.subheadline)
-            .padding(.horizontal, 12)
-            .padding(.vertical, 6)
-            .background(on ? Color.primary : Color(.secondarySystemGroupedBackground), in: Capsule())
-            .foregroundStyle(on ? Color(.systemBackground) : .primary)
+            .padding(.horizontal, 13)
+            .padding(.vertical, 7)
+            .foregroundStyle(on ? Theme.text : Theme.muted)
+            .background(on ? Theme.accent.opacity(0.14) : Theme.panel, in: shape)
+            .overlay(shape.strokeBorder(on ? Theme.accent.opacity(0.55) : Theme.line, lineWidth: 1))
         }
         .buttonStyle(.plain)
         .accessibilityAddTraits(on ? .isSelected : [])
@@ -225,45 +247,45 @@ struct SandboxRow: View {
     var body: some View {
         HStack(alignment: .top, spacing: 12) {
             StatusBadge(state: sandbox.state)
-                .overlay(alignment: .leading) {
-                    if sandbox.unread {
-                        Circle()
-                            .fill(.blue)
-                            .frame(width: 9, height: 9)
-                            .offset(x: -15)
-                            .accessibilityLabel("New reply")
+            VStack(alignment: .leading, spacing: 3) {
+                HStack(alignment: .firstTextBaseline, spacing: 8) {
+                    Text(sandbox.title)
+                        .fontWeight(sandbox.unread ? .bold : .medium)
+                        .foregroundStyle(Theme.text)
+                        .lineLimit(1)
+                    Spacer(minLength: 0)
+                    if let at = sandbox.activeAt {
+                        Text(shortAgo(at)).font(.caption.monospaced()).foregroundStyle(Theme.dim)
                     }
                 }
-            VStack(alignment: .leading, spacing: 2) {
-                Text(sandbox.title)
-                    .fontWeight(sandbox.unread ? .semibold : .regular)
-                    .lineLimit(1)
-                Text(sandbox.unread && sandbox.state == .ready ? "New reply: \(sandbox.statusText)" : sandbox.statusText)
-                    .font(.subheadline)
-                    .foregroundStyle(statusColor)
-                    .lineLimit(1)
-                HStack(spacing: 8) {
+                HStack(spacing: 6) {
+                    if sandbox.unread && sandbox.state == .ready {
+                        NewTag().accessibilityLabel("New reply:")
+                    }
+                    Text(sandbox.statusText)
+                        .foregroundStyle(statusColor)
+                        .lineLimit(1)
+                }
+                .font(.subheadline)
+                HStack(spacing: 10) {
                     if let branch = sandbox.branch {
-                        Text(branch).font(.caption.monospaced()).lineLimit(1).truncationMode(.middle)
+                        BranchLabel(branch: branch)
                     }
                     if sandbox.files > 0 {
-                        ChangeCounts(added: sandbox.added, removed: sandbox.removed).font(.caption)
-                    }
-                    if let at = sandbox.activeAt {
-                        Text(shortAgo(at)).font(.caption)
+                        ChangeCounts(added: sandbox.added, removed: sandbox.removed).layoutPriority(1)
                     }
                 }
-                .foregroundStyle(.secondary)
+                .font(.caption.monospaced())
+                .foregroundStyle(Theme.dim)
+                .padding(.top, 2)
             }
         }
-        .padding(.vertical, 2)
     }
 
     private var statusColor: Color {
         switch sandbox.state {
-        case .needsYou: .orange
-        case .failed: .red
-        default: .secondary
+        case .needsYou, .failed: sandbox.state.color
+        default: Theme.muted
         }
     }
 }

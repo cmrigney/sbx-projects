@@ -10,6 +10,7 @@ struct ReplySheet: View {
     @Environment(\.dismiss) private var dismiss
     @State private var reply: Reply?
     @State private var error: String?
+    @FocusState private var composing: Bool
 
     var body: some View {
         NavigationStack {
@@ -17,6 +18,7 @@ struct ReplySheet: View {
                 if let reply {
                     MarkdownView(markdown: reply.markdown)
                         .padding()
+                        .padding(.top, 4)
                         .textSelection(.enabled)
                 } else if let error {
                     ContentUnavailableView("No reply", systemImage: "text.bubble", description: Text(error))
@@ -25,14 +27,15 @@ struct ReplySheet: View {
                     ProgressView().padding(.top, 60)
                 }
             }
+            .background(Theme.bg)
             .navigationTitle("Last reply")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .principal) {
                     VStack(spacing: 0) {
-                        Text("Last reply").font(.headline)
+                        Text("Last reply").font(.headline).foregroundStyle(Theme.text)
                         if let reply {
-                            Text("\(sandbox.agentLabel) · \(shortAgo(reply.at)) ago").font(.caption).foregroundStyle(.secondary)
+                            Text("\(sandbox.agentLabel) · \(shortAgo(reply.at)) ago").font(.caption.monospaced()).foregroundStyle(Theme.dim)
                         }
                     }
                 }
@@ -45,11 +48,12 @@ struct ReplySheet: View {
                 }
             }
             .safeAreaInset(edge: .bottom) {
-                Composer(sandbox: sandbox, placeholder: "Reply to \(sandbox.agentLabel)") { dismiss() }
+                Composer(sandbox: sandbox, placeholder: "Reply to \(sandbox.agentLabel)", focused: $composing) { dismiss() }
             }
         }
         .presentationDetents([.large, .medium])
         .presentationDragIndicator(.visible)
+        .presentationBackground(Theme.bg)
         .task {
             do {
                 reply = try await app.reply(sandbox.name)
@@ -73,6 +77,7 @@ struct MarkdownView: View {
                 view(for: block)
             }
         }
+        .foregroundStyle(Theme.text)
         .frame(maxWidth: .infinity, alignment: .leading)
     }
 
@@ -89,7 +94,7 @@ struct MarkdownView: View {
             VStack(alignment: .leading, spacing: 6) {
                 ForEach(Array(items.enumerated()), id: \.offset) { _, item in
                     HStack(alignment: .firstTextBaseline, spacing: 8) {
-                        Text(item.marker).monospacedDigit().foregroundStyle(.secondary)
+                        Text(item.marker).font(.body.monospaced().bold()).foregroundStyle(Theme.accent)
                         Text(inline(item.text))
                     }
                     .padding(.leading, CGFloat(item.depth) * 18)
@@ -97,8 +102,8 @@ struct MarkdownView: View {
             }
         case .quote(let text):
             HStack(spacing: 10) {
-                RoundedRectangle(cornerRadius: 1.5).fill(Color(.separator)).frame(width: 3)
-                Text(inline(text)).foregroundStyle(.secondary)
+                RoundedRectangle(cornerRadius: 1.5).fill(Theme.accent.opacity(0.6)).frame(width: 3)
+                Text(inline(text)).foregroundStyle(Theme.muted)
             }
         case .code(let text):
             ScrollView(.horizontal, showsIndicators: false) {
@@ -106,36 +111,48 @@ struct MarkdownView: View {
                     .font(.system(.footnote, design: .monospaced))
                     .padding(12)
             }
-            .background(Color(.tertiarySystemFill), in: RoundedRectangle(cornerRadius: 10, style: .continuous))
+            .background(Theme.panel, in: RoundedRectangle(cornerRadius: 10, style: .continuous))
+            .overlay(RoundedRectangle(cornerRadius: 10, style: .continuous).strokeBorder(Theme.line, lineWidth: 1))
         case .table(let header, let rows):
             ScrollView(.horizontal, showsIndicators: false) {
                 Grid(alignment: .leading, horizontalSpacing: 0, verticalSpacing: 0) {
                     GridRow {
                         ForEach(Array(header.enumerated()), id: \.offset) { _, cell in
-                            Text(inline(cell)).font(.subheadline.weight(.semibold)).padding(8)
+                            Text(cell.uppercased())
+                                .font(.system(size: 11, weight: .medium, design: .monospaced))
+                                .tracking(0.6)
+                                .foregroundStyle(Theme.dim)
+                                .padding(.horizontal, 12)
+                                .padding(.vertical, 10)
                         }
                     }
-                    .background(Color(.tertiarySystemFill))
                     ForEach(Array(rows.enumerated()), id: \.offset) { _, row in
-                        Divider()
+                        RowDivider()
                         GridRow {
                             ForEach(Array(row.enumerated()), id: \.offset) { _, cell in
-                                Text(inline(cell)).font(.subheadline).padding(8)
+                                Text(inline(cell)).font(.subheadline).padding(.horizontal, 12).padding(.vertical, 10)
                             }
                         }
                     }
                 }
-                .overlay(RoundedRectangle(cornerRadius: 10, style: .continuous).stroke(Color(.separator), lineWidth: 0.5))
+                .background(Theme.panel)
                 .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
+                .overlay(RoundedRectangle(cornerRadius: 10, style: .continuous).strokeBorder(Theme.line, lineWidth: 1))
             }
         case .rule:
-            Divider()
+            RowDivider()
         }
     }
 
     private func inline(_ text: String) -> AttributedString {
         let opts = AttributedString.MarkdownParsingOptions(interpretedSyntax: .inlineOnlyPreservingWhitespace)
-        return (try? AttributedString(markdown: text, options: opts)) ?? AttributedString(text)
+        var a = (try? AttributedString(markdown: text, options: opts)) ?? AttributedString(text)
+        // Code reads as the terminal's, on a faint mint wash.
+        for run in a.runs where run.inlinePresentationIntent?.contains(.code) == true {
+            a[run.range].foregroundColor = Theme.accent
+            a[run.range].backgroundColor = Theme.accent.opacity(0.1)
+        }
+        return a
     }
 }
 

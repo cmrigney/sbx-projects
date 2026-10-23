@@ -149,15 +149,17 @@ Other agents only report whether their session is running.
 
 The iPhone app keeps you in touch with your agents when you're away from the terminal. It shows the same projects and sandboxes as the TUI, kept live while the app is open, so you can see which agents need you, answer a question, read a reply in full, or start a new sandbox from your phone.
 
+It looks like the [web app](#in-a-browser): the app icon's navy and mint, with a terminal's type for branches, times and logs, in dark or light to match your phone. Navigation, sheets, menus and controls are the iPhone's own.
+
 <p align="center">
   <img src="docs/images/ios-sandboxes.png" width="200" alt="The sandbox list, grouped by project, with filters for Needs you, Working and Ready">
-  <img src="docs/images/ios-sandbox-detail.png" width="200" alt="A sandbox whose agent is asking a question, with its activity and a message box">
+  <img src="docs/images/ios-sandbox-detail.png" width="200" alt="A sandbox whose agent is asking a question, with its activity as a log and a message box">
   <img src="docs/images/ios-changes.png" width="200" alt="The Changes tab, listing each changed file with its added and removed lines">
   <img src="docs/images/ios-reply.png" width="200" alt="An agent's last reply rendered as markdown, with a box to reply">
   <img src="docs/images/ios-new-sandbox.png" width="200" alt="The New sandbox form, with the task, branch, private clone, agent, model and kits">
 </p>
 
-*The demo data on an iPhone: every sandbox and its status, an agent waiting on a question, its changed files, another agent's last reply, and the New sandbox form.*
+*The demo data on an iPhone in dark mode: every sandbox and its status, an agent waiting on a question, its changed files, another agent's last reply, and the New sandbox form.*
 
 From the app you can:
 
@@ -182,7 +184,7 @@ The same server also serves a web app that does everything the iPhone app does, 
 
 The web app can also **attach** to an agent, as `Enter` does in the TUI: **Attach** on a sandbox (or `Enter` on a keyboard) opens its terminal in the page, resuming the sandbox or starting the agent first when needed. On a phone, a key bar adds Ctrl, Esc, Tab and the arrows. **Detach** or **Ctrl+B, then d** returns to the sandbox; the agent keeps running.
 
-It has a look of its own, taken from the app icon: navy and mint, with a terminal's type for branches, times and logs, in dark or light to match your system. On a phone it shows one screen at a time:
+It has the same look as the iPhone app, taken from the app icon: navy and mint, with a terminal's type for branches, times and logs, in dark or light to match your system. On a phone it shows one screen at a time:
 
 <p align="center">
   <img src="docs/images/web-sandboxes.png" width="200" alt="The sandbox list in a phone's browser, grouped by project, with filters for Needs you, Working and Ready">

@@ -12,6 +12,7 @@ struct SandboxDetailView: View {
     @State private var showReply = false
     @State private var diffPath: DiffTarget?
     @State private var confirmRemove = false
+    @FocusState private var composing: Bool
 
     enum Tab: String, CaseIterable {
         case activity = "Activity", changes = "Changes", setup = "Setup"
@@ -32,7 +33,7 @@ struct SandboxDetailView: View {
         }
         .navigationTitle(sandbox?.name ?? name)
         .navigationBarTitleDisplayMode(.inline)
-        .background(Color(.systemGroupedBackground))
+        .background(Theme.bg)
         // Every change to the sandbox reloads its tabs.
         .task(id: app.sandboxes[name]) { await load() }
         .onChange(of: app.sandboxes[name] == nil) { _, gone in
@@ -59,9 +60,11 @@ struct SandboxDetailView: View {
             VStack(alignment: .leading, spacing: 16) {
                 header(s)
                 if s.state == .needsYou {
-                    AskCard(sandbox: s)
+                    Callout(color: Theme.needs, icon: "apple.terminal", head: "\(s.agentLabel) is asking", at: s.activeAt,
+                            text: s.statusText, link: "Answer below") { composing = true }
                 } else if s.unread && s.hasReply {
-                    Button { showReply = true } label: { NewReplyCard(sandbox: s) }.buttonStyle(.plain)
+                    Callout(color: Theme.accent, icon: "text.bubble", head: "New reply", at: s.activeAt,
+                            text: s.statusText, link: "Read it") { showReply = true }
                 }
                 Picker("Tab", selection: $tab) {
                     ForEach(Tab.allCases, id: \.self) { Text($0.rawValue) }
@@ -77,7 +80,7 @@ struct SandboxDetailView: View {
             .padding(.bottom, 24)
         }
         .scrollDismissesKeyboard(.interactively)
-        .safeAreaInset(edge: .bottom) { Composer(sandbox: s) }
+        .safeAreaInset(edge: .bottom) { Composer(sandbox: s, focused: $composing) }
         .toolbar { ToolbarItem(placement: .topBarTrailing) { actions(s) } }
         .confirmationDialog("Remove \(s.name)?", isPresented: $confirmRemove, titleVisibility: .visible) {
             Button("Remove", role: .destructive) { Task { await app.remove(s.name) } }
@@ -88,16 +91,23 @@ struct SandboxDetailView: View {
 
     private func header(_ s: Sandbox) -> some View {
         VStack(alignment: .leading, spacing: 8) {
+            HStack(spacing: 10) {
+                StatusTag(state: s.state)
+                if let at = s.activeAt {
+                    Text(shortAgo(at)).font(.caption.monospaced()).foregroundStyle(Theme.dim)
+                }
+            }
             Text(s.title)
                 .font(.title2.bold())
+                .foregroundStyle(Theme.text)
             if let branch = s.branch {
-                Text(branch).font(.mono).foregroundStyle(.secondary)
+                BranchLabel(branch: branch).font(.mono).foregroundStyle(Theme.muted)
             }
-            HStack(spacing: 8) {
-                StatusBadge(state: s.state, size: 18)
+            // The callout below says it in full.
+            if s.state != .needsYou && !(s.unread && s.hasReply) {
                 Text(s.statusText)
                     .font(.subheadline)
-                    .foregroundStyle(s.state == .failed ? .red : .secondary)
+                    .foregroundStyle(s.state == .failed ? Theme.fail : Theme.muted)
                     .lineLimit(2)
             }
             FlowTags(tags: tags(s))
@@ -108,9 +118,9 @@ struct SandboxDetailView: View {
     private func tags(_ s: Sandbox) -> [String] {
         var t = [s.modelLabel.map { "\(s.agentLabel) · \($0)" } ?? s.agentLabel]
         if let cpus = s.cpus, let mem = s.memoryMiB, cpus > 0 {
-            t.append("\(cpus) CPU · \(memoryLabel(mem))")
+            t.append("\(cpus) cpu · \(memoryLabel(mem))")
         }
-        t.append(s.clone ? "Private clone" : "Your working tree")
+        t.append(s.clone ? "private clone" : "your working tree")
         return t
     }
 
@@ -149,50 +159,49 @@ struct DiffTarget: Identifiable {
     let path: String?
 }
 
-/// The agent's question, when it is waiting on one.
-private struct AskCard: View {
-    let sandbox: Sandbox
+/// The agent's question, or its unread reply, above the tabs.
+private struct Callout: View {
+    let color: Color
+    let icon: String
+    let head: String
+    let at: Date?
+    let text: String
+    let link: String
+    let action: () -> Void
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 6) {
-            HStack {
-                Text("\(sandbox.agentLabel) is asking")
-                    .font(.caption.weight(.semibold))
-                    .textCase(.uppercase)
-                    .foregroundStyle(.orange)
-                Spacer()
-                if let at = sandbox.activeAt {
-                    Text(shortAgo(at)).font(.caption).foregroundStyle(.secondary)
+        Button(action: action) {
+            VStack(alignment: .leading, spacing: 8) {
+                HStack {
+                    Label(head.uppercased(), systemImage: icon)
+                        .font(.system(size: 11.5, weight: .semibold, design: .monospaced))
+                        .tracking(0.6)
+                        .foregroundStyle(color)
+                    Spacer()
+                    if let at {
+                        Text("\(shortAgo(at)) ago").font(.caption.monospaced()).foregroundStyle(Theme.dim)
+                    }
                 }
+                Text(text)
+                    .font(.body.weight(.medium))
+                    .foregroundStyle(Theme.text)
+                    .lineLimit(3)
+                    .multilineTextAlignment(.leading)
+                Text(link)
+                    .font(.subheadline.weight(.semibold))
+                    .foregroundStyle(color)
+                    .padding(.top, 2)
             }
-            Text(sandbox.statusText)
-                .font(.body.weight(.medium))
+            .padding(.leading, 17)
+            .padding([.trailing, .vertical], 14)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .background(RailBackground(rail: color, tint: 0.09))
         }
-        .padding(14)
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .background(Color.orange.opacity(0.14), in: RoundedRectangle(cornerRadius: 14, style: .continuous))
+        .buttonStyle(.plain)
     }
 }
 
-private struct NewReplyCard: View {
-    let sandbox: Sandbox
-
-    var body: some View {
-        HStack(alignment: .top, spacing: 10) {
-            Circle().fill(.blue).frame(width: 9, height: 9).padding(.top, 6)
-            VStack(alignment: .leading, spacing: 4) {
-                Text("New reply").font(.caption.weight(.semibold)).textCase(.uppercase).foregroundStyle(.blue)
-                Text(sandbox.statusText).font(.body).lineLimit(3).multilineTextAlignment(.leading)
-                Text("Read it").font(.subheadline.weight(.semibold)).foregroundStyle(.blue)
-            }
-            Spacer(minLength: 0)
-        }
-        .padding(14)
-        .background(Color.blue.opacity(0.1), in: RoundedRectangle(cornerRadius: 14, style: .continuous))
-    }
-}
-
-/// Small grey tags that wrap onto more lines when they don't fit.
+/// Small mono tags that wrap onto more lines when they don't fit.
 private struct FlowTags: View {
     let tags: [String]
 
@@ -205,11 +214,12 @@ private struct FlowTags: View {
 
     private func tag(_ t: String) -> some View {
         Text(t)
-            .font(.caption.weight(.medium))
-            .foregroundStyle(.secondary)
+            .font(.system(size: 11.5, weight: .medium, design: .monospaced))
+            .foregroundStyle(Theme.muted)
             .padding(.horizontal, 8)
-            .padding(.vertical, 3)
-            .background(Color(.tertiarySystemFill), in: RoundedRectangle(cornerRadius: 6, style: .continuous))
+            .padding(.vertical, 5)
+            .background(Theme.panel, in: RoundedRectangle(cornerRadius: 6, style: .continuous))
+            .overlay(RoundedRectangle(cornerRadius: 6, style: .continuous).strokeBorder(Theme.line, lineWidth: 1))
     }
 }
 
@@ -218,6 +228,7 @@ private struct FlowTags: View {
 struct Composer: View {
     let sandbox: Sandbox
     var placeholder: String?
+    var focused: FocusState<Bool>.Binding
     var onSent: () -> Void = {}
 
     @Environment(AppModel.self) private var app
@@ -225,24 +236,40 @@ struct Composer: View {
     @State private var sending = false
 
     private var trimmed: String { text.trimmingCharacters(in: .whitespacesAndNewlines) }
+    private var canSend: Bool { !trimmed.isEmpty && !sending && !sandbox.busy }
 
     var body: some View {
-        HStack(alignment: .bottom, spacing: 8) {
+        let shape = RoundedRectangle(cornerRadius: 14, style: .continuous)
+        HStack(alignment: .bottom, spacing: 10) {
+            Text(">_")
+                .font(.callout.monospaced().weight(.bold))
+                .foregroundStyle(Theme.accent)
+                .padding(.bottom, 8)
+                .accessibilityHidden(true)
             TextField(placeholder ?? "Message \(sandbox.agentLabel)", text: $text, axis: .vertical)
                 .lineLimit(1...6)
-                .padding(.leading, 14)
-                .padding(.trailing, 6)
+                .focused(focused)
                 .padding(.vertical, 8)
-                .background(Color(.secondarySystemGroupedBackground), in: RoundedRectangle(cornerRadius: 18, style: .continuous))
-                .overlay(RoundedRectangle(cornerRadius: 18, style: .continuous).stroke(Color(.separator), lineWidth: 0.5))
             Button(action: send) {
-                Image(systemName: sending ? "ellipsis.circle.fill" : "arrow.up.circle.fill")
-                    .font(.system(size: 32))
-                    .symbolRenderingMode(.hierarchical)
+                Group {
+                    if sending {
+                        ProgressView().controlSize(.small).tint(Theme.accentInk)
+                    } else {
+                        Image(systemName: "arrow.up").font(.body.weight(.bold))
+                    }
+                }
+                .frame(width: 34, height: 34)
+                .foregroundStyle(canSend || sending ? Theme.accentInk : Theme.dim)
+                .background(canSend || sending ? Theme.accentFill : Theme.panel2, in: RoundedRectangle(cornerRadius: 9, style: .continuous))
             }
-            .disabled(trimmed.isEmpty || sending || sandbox.busy)
+            .disabled(!canSend)
             .accessibilityLabel("Send")
         }
+        .padding(.leading, 14)
+        .padding(.trailing, 5)
+        .padding(.vertical, 5)
+        .background(Theme.panel, in: shape)
+        .overlay(shape.strokeBorder(focused.wrappedValue ? Theme.accent.opacity(0.7) : Theme.line, lineWidth: 1))
         .padding(.horizontal)
         .padding(.vertical, 8)
         .background(.bar)

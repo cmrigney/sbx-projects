@@ -23,6 +23,7 @@ struct DiffView: View {
                     ProgressView("Reading the diff")
                 }
             }
+            .background(Theme.bg)
             .navigationTitle("Changes")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
@@ -45,7 +46,7 @@ struct DiffView: View {
                     if diff.truncated == true {
                         Text("This diff is too long to show in full. Files past the limit show only their names.")
                             .font(.footnote)
-                            .foregroundStyle(.secondary)
+                            .foregroundStyle(Theme.muted)
                             .padding()
                     }
                     ForEach(diff.files) { file in
@@ -67,10 +68,10 @@ struct DiffView: View {
 
     private func header(_ file: Diff.File) -> some View {
         HStack {
-            Text(file.path).font(.mono.weight(.semibold)).lineLimit(1).truncationMode(.head)
+            Text(file.path).font(.mono.weight(.semibold)).foregroundStyle(Theme.text).lineLimit(1).truncationMode(.head)
             Spacer()
             if let note = file.note {
-                Text(note).font(.caption).foregroundStyle(.secondary)
+                Text(note).font(.caption.monospaced()).foregroundStyle(Theme.dim)
             }
         }
         .padding(.horizontal)
@@ -90,7 +91,7 @@ private struct FileHunks: View {
         if file.lines.isEmpty {
             Text(file.note == nil ? "No lines to show" : "Nothing to show for a \(file.note!) file")
                 .font(.footnote)
-                .foregroundStyle(.secondary)
+                .foregroundStyle(Theme.muted)
                 .padding()
         } else {
             ScrollView(.horizontal, showsIndicators: false) {
@@ -100,7 +101,7 @@ private struct FileHunks: View {
                     ForEach(Array(file.lines.enumerated()), id: \.offset) { _, line in
                         Text(line.isEmpty ? " " : line)
                             .font(.system(size: 12, design: .monospaced))
-                            .foregroundStyle(line.hasPrefix("@@") ? Color.secondary : Color.primary)
+                            .foregroundStyle(foreground(line))
                             .lineLimit(1)
                             .padding(.horizontal, 12)
                             .frame(maxWidth: .infinity, alignment: .leading)
@@ -115,9 +116,16 @@ private struct FileHunks: View {
     }
 
     private func background(_ line: String) -> Color {
-        if line.hasPrefix("@@") { return Color(.tertiarySystemFill) }
-        if line.hasPrefix("+") { return .green.opacity(0.15) }
-        if line.hasPrefix("-") { return .red.opacity(0.13) }
+        if line.hasPrefix("@@") { return Theme.work.opacity(0.1) }
+        if line.hasPrefix("+") { return Theme.add.opacity(0.14) }
+        if line.hasPrefix("-") { return Theme.del.opacity(0.13) }
         return .clear
+    }
+
+    private func foreground(_ line: String) -> Color {
+        if line.hasPrefix("@@") { return Theme.work }
+        if line.hasPrefix("+") { return Theme.add }
+        if line.hasPrefix("-") { return Theme.del }
+        return Theme.text
     }
 }
