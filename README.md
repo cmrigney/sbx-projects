@@ -166,6 +166,7 @@ From the app you can:
 - Filter sandboxes by Needs you, Working and Ready, or search by title, branch or name.
 - Read an agent's activity, changed files and commits, and the full diff file by file.
 - Send the agent a message, or reply to its last answer.
+- Attach to the agent's terminal, as `Enter` does in the TUI, with a key bar for Ctrl, Esc, Tab and the arrows. **Detach** or **Ctrl+B, then d** returns to the sandbox; the agent keeps running.
 - Open a draft pull request, check out the branch on your Mac, and stop, resume or remove a sandbox.
 - Create a sandbox with the same choices as the New sandbox form.
 - Pair with more than one Mac and switch between them from the Mac's name at the top of the list.
