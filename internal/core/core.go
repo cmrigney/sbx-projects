@@ -85,13 +85,15 @@ func ProjectByID(projects []store.Project, id int64) store.Project {
 }
 
 // CanPR says whether the sandbox has commits worth a pull request.
-func CanPR(rec *store.Sandbox, p *agent.Probe) bool {
-	return PRBlocker(rec, p) == ""
+func CanPR(proj store.Project, rec *store.Sandbox, p *agent.Probe) bool {
+	return PRBlocker(proj, rec, p) == ""
 }
 
 // PRBlocker says why a pull request can't be opened, or "" when it can.
-func PRBlocker(rec *store.Sandbox, p *agent.Probe) string {
+func PRBlocker(proj store.Project, rec *store.Sandbox, p *agent.Probe) string {
 	switch {
+	case proj.Remote == "":
+		return "The project has no remote to open a pull request on"
 	case !rec.Clone:
 		return "Pull requests are opened from clone-mode sandboxes"
 	case p == nil:

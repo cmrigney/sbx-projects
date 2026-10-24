@@ -547,8 +547,9 @@ type promptForm struct {
 
 func (m *Model) openAddProject() {
 	m.prompt = &promptForm{
-		title: "Add a project", label: "Path to a git repository",
-		help:   "A project is a repo. Sandboxes you start for it, and any existing sandboxes whose workspace is inside it, show up under it.",
+		title: "Add a project", label: "Path to a git repository, or a URL to clone",
+		help: "A project is a repo. Sandboxes you start for it, and any existing sandboxes whose workspace is inside it, show up under it. " +
+			"Type a path that doesn't exist yet to start a project from scratch. A URL is cloned into " + tildePath(core.ProjectsDir(m.projects)) + ".",
 		action: "Add project", field: newField(tildePath(DefaultProjectPath())),
 		submit: m.addProject,
 	}
@@ -621,15 +622,30 @@ func (m *Model) submitPrompt() tea.Cmd {
 type confirmBox struct {
 	title, body, yes string
 	fn               func() tea.Cmd
+	// safe colours the answer as an ordinary action rather than a
+	// destructive one.
+	safe bool
+	// altKey, when set, gives a second answer, alt, which runs altFn.
+	altKey, alt string
+	altFn       func() tea.Cmd
 }
 
 func (m *Model) confirmLines(w int) []Line {
+	c := m.confirm
 	var out []Line
-	for _, s := range wrap(m.confirm.body, w) {
+	for _, s := range wrap(c.body, w) {
 		out = append(out, L(S(s, cFg)))
 	}
-	return append(out, L(), L().R(B("esc", cAcc).click(m.closeOverlay), S(" Cancel   ", cFg).click(m.closeOverlay),
-		Seg{t: " y ", f: cInv, bold: true, bg: "bad", on: m.confirmYes}, Seg{t: m.confirm.yes + " ", f: cInv, bold: true, bg: "bad", on: m.confirmYes}))
+	bg := "bad"
+	if c.safe {
+		bg = gAcc
+	}
+	row := []Seg{B("esc", cAcc).click(m.closeOverlay), S(" Cancel   ", cFg).click(m.closeOverlay)}
+	if c.altKey != "" {
+		row = append(row, B(c.altKey, cAcc).click(m.confirmAlt), S(" "+c.alt+"   ", cFg).click(m.confirmAlt))
+	}
+	row = append(row, Seg{t: " y ", f: cInv, bold: true, bg: bg, on: m.confirmYes}, Seg{t: c.yes + " ", f: cInv, bold: true, bg: bg, on: m.confirmYes})
+	return append(out, L(), L().R(row...))
 }
 
 func (m *Model) confirmYes() tea.Cmd {
@@ -639,6 +655,15 @@ func (m *Model) confirmYes() tea.Cmd {
 		return nil
 	}
 	return c.fn()
+}
+
+func (m *Model) confirmAlt() tea.Cmd {
+	c := m.confirm
+	m.confirm = nil
+	if c == nil || c.altFn == nil {
+		return nil
+	}
+	return c.altFn()
 }
 
 func (m *Model) activeField() *textField {
@@ -667,6 +692,8 @@ func (m *Model) onKey(k tea.KeyPressMsg) tea.Cmd {
 			return m.confirmYes()
 		case "n", "esc", "q":
 			m.confirm = nil
+		case m.confirm.altKey:
+			return m.confirmAlt()
 		}
 		return nil
 	case m.prompt != nil:

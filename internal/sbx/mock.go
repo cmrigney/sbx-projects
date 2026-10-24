@@ -211,7 +211,12 @@ func (m *Mock) Exec(ctx context.Context, name, script string) (string, error) {
 	case strings.Contains(script, "new-session"):
 		if !s.agentUp {
 			s.agentUp = true
-			s.events = append(s.events, map[string]any{"ts": now, "ev": "SessionStart", "reason": "startup"})
+			// Like the hook, a fresh session starts the activity over.
+			reason := "resume"
+			if !strings.Contains(script, "--continue") && !strings.Contains(script, "resume --last") {
+				reason, s.events = "startup", nil
+			}
+			s.events = append(s.events, map[string]any{"ts": now, "ev": "SessionStart", "reason": reason})
 			if p := decodeB64(script); p != "" {
 				s.events = append(s.events, map[string]any{"ts": now, "ev": "UserPromptSubmit", "prompt": p})
 				if len(s.script) == 0 {

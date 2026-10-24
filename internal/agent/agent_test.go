@@ -417,6 +417,56 @@ func TestHookKeepsTheWholeReply(t *testing.T) {
 	}
 }
 
+func TestHookClearsActivityOnANewSession(t *testing.T) {
+	if _, err := exec.LookPath("jq"); err != nil {
+		t.Skip("jq not installed")
+	}
+	home := t.TempDir()
+	dir := filepath.Join(home, ".sbx-projects")
+	if err := os.MkdirAll(dir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	hook := filepath.Join(dir, "hook.sh")
+	if err := os.WriteFile(hook, []byte(hookScript), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	run := func(p string) {
+		cmd := exec.Command("bash", hook)
+		cmd.Env = append(os.Environ(), "HOME="+home)
+		cmd.Stdin = strings.NewReader(p)
+		if out, err := cmd.CombinedOutput(); err != nil {
+			t.Fatalf("hook failed: %v\n%s", err, out)
+		}
+	}
+	events := func() string {
+		raw, _ := os.ReadFile(filepath.Join(dir, "events.jsonl"))
+		var got []string
+		for _, e := range ParseProbe("@@events\n" + string(raw)).Events {
+			got = append(got, e.Ev+":"+e.Reason)
+		}
+		return strings.Join(got, " ")
+	}
+	run(`{"hook_event_name":"SessionStart","source":"startup"}`)
+	run(`{"hook_event_name":"UserPromptSubmit","prompt":"hi"}`)
+	run(`{"hook_event_name":"Stop","last_assistant_message":"Done"}`)
+	for _, src := range []string{"resume", "compact"} {
+		run(`{"hook_event_name":"SessionStart","source":"` + src + `"}`)
+	}
+	if got, want := events(), "SessionStart:startup UserPromptSubmit: Stop: SessionStart:resume SessionStart:compact"; got != want {
+		t.Fatalf("after resume and compact, events = %s, want %s", got, want)
+	}
+	for _, src := range []string{"clear", "startup"} {
+		run(`{"hook_event_name":"UserPromptSubmit","prompt":"more"}`)
+		run(`{"hook_event_name":"SessionStart","source":"` + src + `"}`)
+		if got, want := events(), "SessionStart:"+src; got != want {
+			t.Fatalf("after %s, events = %s, want %s", src, got, want)
+		}
+	}
+	if _, err := os.Stat(filepath.Join(dir, "last-turn.txt")); !os.IsNotExist(err) {
+		t.Fatalf("last reply kept across a new session: %v", err)
+	}
+}
+
 func TestProbeReadsTheLastReply(t *testing.T) {
 	home := t.TempDir()
 	dir := filepath.Join(home, ".sbx-projects")
