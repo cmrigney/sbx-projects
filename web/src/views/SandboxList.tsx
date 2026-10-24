@@ -15,7 +15,8 @@ export function SandboxList({ selected }: { selected?: string }) {
   const live = connection.kind === "live";
 
   useKeys({
-    n: () => projects.length > 0 && go({ page: "new" }),
+    n: () => go({ page: projects.length > 0 ? "new" : "new-project" }),
+    N: () => go({ page: "new-project" }),
     "/": () => search.current?.focus(),
   });
 
@@ -34,9 +35,14 @@ export function SandboxList({ selected }: { selected?: string }) {
         <h1>
           Sandboxes <span className="count">{Object.keys(sandboxes).length}</span>
         </h1>
-        <button className="btn primary small" disabled={projects.length === 0} onClick={() => go({ page: "new" })}>
-          <Icon name="plus" size={16} /> New <kbd className="hint">n</kbd>
-        </button>
+        <div className="list-actions">
+          <button className="ghost new-project" onClick={() => go({ page: "new-project" })} title="New project (N)" aria-label="New project">
+            <Icon name="folderPlus" size={20} /> <span className="label">Project</span>
+          </button>
+          <button className="btn primary small" disabled={projects.length === 0} onClick={() => go({ page: "new" })}>
+            <Icon name="plus" size={16} /> New <kbd className="hint">n</kbd>
+          </button>
+        </div>
       </div>
       <label className="search">
         <Icon name="search" size={16} />
@@ -75,7 +81,10 @@ export function SandboxList({ selected }: { selected?: string }) {
       ))}
       {live && projects.length === 0 && (
         <Empty icon="terminal" title="No projects yet">
-          Run sbx-projects in a git repository on your Mac to add it as a project.
+          Start one from scratch or clone a repo onto your Mac.
+          <button className="btn primary small empty-action" onClick={() => go({ page: "new-project" })}>
+            <Icon name="plus" size={16} /> New project
+          </button>
         </Empty>
       )}
       {live && projects.length > 0 && Object.keys(sandboxes).length === 0 && (

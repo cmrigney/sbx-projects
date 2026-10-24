@@ -7,9 +7,9 @@ import { Icon, Sheet, back, go } from "../components";
  * The TUI's New sandbox form. It starts with what the project remembers:
  * its kits, and the model and MCP servers last picked.
  */
-export function NewSandbox() {
+export function NewSandbox({ project }: { project?: number }) {
   const { projects, client, create } = useApp();
-  const [projectId, setProjectId] = useState<number | undefined>(projects[0]?.id);
+  const [projectId, setProjectId] = useState<number | undefined>(project ?? projects[0]?.id);
   const [options, setOptions] = useState<Options | null>(null);
   const [optionsError, setOptionsError] = useState<string>();
   const [task, setTask] = useState("");

@@ -8,6 +8,8 @@ import {
   savedToken,
   serverInfo,
   type CreateRequest,
+  type NewProjectRequest,
+  type NewProjectResult,
   type Project,
   type Sandbox,
   type ServerEvent,
@@ -41,6 +43,8 @@ interface AppState {
   /** Starts an action; how it ends arrives as a toast. Returns whether the Mac took it. */
   act: (name: string, fn: (c: Client) => Promise<Sandbox>) => Promise<boolean>;
   create: (r: CreateRequest) => Promise<Sandbox>;
+  /** Makes a project, and its first sandbox when given a task. Resolves once the project exists. */
+  newProject: (r: NewProjectRequest) => Promise<NewProjectResult>;
   markSeen: (name: string) => Promise<void>;
   fail: (message: string) => void;
 }
@@ -223,6 +227,26 @@ export function AppProvider({ children }: { children: ReactNode }) {
     [client, show, applyResponse],
   );
 
+  const newProject = useCallback(
+    async (r: NewProjectRequest) => {
+      if (!client) throw new Error("Not paired");
+      unclaimed.current.clear();
+      const started = revision.current;
+      const res = await client.newProject(r);
+      // The stream sends the projects too; this shows the new one without waiting.
+      setProjects((all) => (all.some((p) => p.id === res.project.id) ? all : [...all, res.project].sort((a, b) => a.name.localeCompare(b.name))));
+      if (res.sandbox) {
+        const done = unclaimed.current.get(res.sandbox.name);
+        if (done) show(done.message ?? "", !!done.ok);
+        else pending.current.add(res.sandbox.name);
+        applyResponse(res.sandbox, started);
+      }
+      if (res.warning) show(res.warning, false);
+      return res;
+    },
+    [client, show, applyResponse],
+  );
+
   const markSeen = useCallback(
     async (name: string) => {
       if (!client) return;
@@ -250,6 +274,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
     signOut,
     act,
     create,
+    newProject,
     markSeen,
     fail: (m) => show(m, false),
   };

@@ -5,6 +5,7 @@ import { afterEach, beforeEach, expect, it, vi } from "vitest";
 import { Sheet } from "./components";
 import { AppProvider, useApp } from "./store";
 import { Client, type Sandbox, type ServerEvent } from "./api";
+import { NewProject } from "./views/NewProject";
 
 vi.mock("./api", async (original) => ({
   ...await original<typeof import("./api")>(),
@@ -84,3 +85,29 @@ for (const method of ["act", "create", "markSeen"] as const) {
     });
   }
 }
+
+it("makes a project and opens the New sandbox form on it", async () => {
+  location.hash = "#/new-project";
+  await act(async () => root.render(<AppProvider><Probe /></AppProvider>));
+  await act(async () => emit({ type: "snapshot", projects: [], sandboxes: [] }));
+  vi.spyOn(app.client!, "projectOptions").mockResolvedValue({ dir: "~/Projects", canPublish: false });
+  const made = vi.spyOn(app.client!, "newProject").mockResolvedValue({
+    project: { id: 7, name: "tools", path: "/p/tools", defaultBranch: "main", layout: "feature", kits: [] },
+  });
+  await act(async () => root.render(<AppProvider><Probe /><NewProject /></AppProvider>));
+
+  const segs = host.querySelectorAll<HTMLButtonElement>(".segmented button");
+  await act(async () => segs[1].click());
+  const url = host.querySelector<HTMLInputElement>('input[aria-label="Repository URL"]')!;
+  await act(async () => {
+    Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, "value")!.set!.call(url, "git@github.com:o/tools.git");
+    url.dispatchEvent(new Event("input", { bubbles: true }));
+  });
+  expect(host.querySelector<HTMLInputElement>('input[aria-label="Project name"]')!.placeholder).toBe("tools");
+  expect(host.querySelector('input[role="switch"]')).toBeNull();
+
+  await act(async () => host.querySelector("form")!.requestSubmit());
+  expect(made).toHaveBeenCalledWith({ name: "", cloneUrl: "git@github.com:o/tools.git", publish: false, task: "" });
+  expect(app.projects.map((p) => p.id)).toEqual([7]);
+  expect(location.hash).toBe("#/new?project=7");
+});

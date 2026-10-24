@@ -108,7 +108,7 @@ func sandboxView(it item) SandboxView {
 		Agent: rec.Agent, AgentLabel: core.AgentLabel(rec.Agent), Clone: rec.Clone, Source: rec.Source,
 		Running: it.running(), AgentUp: it.agentUp, State: stateName(it.status.State), StatusText: it.status.Text,
 		Busy: it.busy != "", Unread: core.Unread(rec, it.probe), ReportsActivity: agent.ReportsActivity(rec.Agent),
-		CanPR: core.CanPR(rec, it.probe) && it.busy == "", CanCheckout: core.CanCheckout(rec, it.running()) && it.busy == "",
+		CanPR: core.CanPR(it.project, rec, it.probe) && it.busy == "", CanCheckout: core.CanCheckout(rec, it.running()) && it.busy == "",
 		CPUs: it.live.CPUs, MemoryMiB: it.live.MemoryMiB, Ports: []PortView{},
 		Kits: orEmpty(rec.Kits), MCPs: orEmpty(rec.MCPs), CreatedAt: rec.CreatedAt.Unix(),
 	}

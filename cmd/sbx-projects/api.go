@@ -47,6 +47,7 @@ func runAPICmd(args []string) error {
 	sbxBin := fs.String("sbx", "sbx", "sbx binary to run")
 	demo := fs.Bool("demo", false, "serve built-in demo data instead of sbx")
 	listen := fs.String("listen", ":7443", "address to listen on")
+	projectsDir := fs.String("projects-dir", "", "folder the apps make new projects in; empty for the one most projects are in")
 	pair := fs.Bool("pair", false, "show a code to pair a new device")
 	host, _ := os.Hostname()
 	name := fs.String("name", strings.TrimSuffix(host, ".local"), "name the app shows for this machine")
@@ -75,7 +76,7 @@ func runAPICmd(args []string) error {
 	}
 	defer closer.Close()
 	slog.Info("starting api", "args", args, "db", *dbPath, "sbx", *sbxBin, "demo", *demo, "listen", *listen, "os", runtime.GOOS, "arch", runtime.GOARCH)
-	if err := serveAPI(devices, dir, *dbPath, *sbxBin, *demo, *listen, *pair, *name, path); err != nil {
+	if err := serveAPI(devices, dir, *dbPath, *sbxBin, *demo, *listen, *pair, *name, path, *projectsDir); err != nil {
 		slog.Error("exiting", "err", err)
 		if path != "" {
 			err = fmt.Errorf("%w; details in %s", err, path)
@@ -86,7 +87,7 @@ func runAPICmd(args []string) error {
 	return nil
 }
 
-func serveAPI(devices *api.Devices, dir, dbPath, sbxBin string, demo bool, listen string, pair bool, name, logPath string) error {
+func serveAPI(devices *api.Devices, dir, dbPath, sbxBin string, demo bool, listen string, pair bool, name, logPath, projectsDir string) error {
 	st, be, err := openBackend(dbPath, sbxBin, demo)
 	if err != nil {
 		return err
@@ -100,7 +101,15 @@ func serveAPI(devices *api.Devices, dir, dbPath, sbxBin string, demo bool, liste
 	if err != nil {
 		return err
 	}
-	srv := &api.Server{Monitor: mon, Devices: devices, ID: fp[:16], Name: name}
+	if projectsDir != "" {
+		if h, herr := os.UserHomeDir(); herr == nil && (projectsDir == "~" || strings.HasPrefix(projectsDir, "~/")) {
+			projectsDir = filepath.Join(h, projectsDir[1:])
+		}
+		if projectsDir, err = filepath.Abs(projectsDir); err != nil {
+			return err
+		}
+	}
+	srv := &api.Server{Monitor: mon, Devices: devices, ID: fp[:16], Name: name, ProjectsDir: projectsDir}
 
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
