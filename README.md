@@ -41,7 +41,7 @@ On the first launch, that repository is added automatically. Press `A` (Shift+A)
 `A` also starts projects that don't exist yet:
 
 - **From scratch:** type a path that doesn't exist yet, such as `~/Projects/my-app`. sbx-projects creates the folder, starts a git repo on `main` with a README and a first commit, and adds it. Clone-mode sandboxes need that commit to branch from. A folder that exists but isn't a repo yet is set up the same way, and its files go in the first commit.
-- **From a URL:** paste a git URL (`https://…` or `git@…`). It's cloned into the folder most of your projects are in, or `~/Projects` if you have none.
+- **From a URL:** paste a git URL (`https://…` or `git@…`). It's cloned into `~/Projects`.
 
 When `gh` is installed, press `g` instead of `y` to also publish a new project to GitHub as a private repo. Pull requests need a remote, so `p` stays off until the project has one. After the project is made, the New sandbox form opens so you can tell the first agent what to build.
 

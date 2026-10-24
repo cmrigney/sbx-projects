@@ -549,7 +549,7 @@ func (m *Model) openAddProject() {
 	m.prompt = &promptForm{
 		title: "Add a project", label: "Path to a git repository, or a URL to clone",
 		help: "A project is a repo. Sandboxes you start for it, and any existing sandboxes whose workspace is inside it, show up under it. " +
-			"Type a path that doesn't exist yet to start a project from scratch. A URL is cloned into " + tildePath(core.ProjectsDir(m.projects)) + ".",
+			"Type a path that doesn't exist yet to start a project from scratch. A URL is cloned into " + tildePath(core.ProjectsDir()) + ".",
 		action: "Add project", field: newField(tildePath(DefaultProjectPath())),
 		submit: m.addProject,
 	}
