@@ -182,6 +182,7 @@ From the app you can:
 - Attach to the agent's terminal, as `Enter` does in the TUI, with a key bar for Ctrl, Esc, Tab and the arrows. **Detach** or **Ctrl+B, then d** returns to the sandbox; the agent keeps running.
 - Open a draft pull request, check out the branch on your Mac, and stop, resume or remove a sandbox.
 - Create a sandbox with the same choices as the New sandbox form.
+- Start a project: an empty repo or a clone of a URL, made in your projects folder on the Mac (see [`--projects-dir`](#the-api)). Give it a first instruction and an agent starts on it right away; otherwise the New sandbox form opens on the new project. A new empty repo can also be published to GitHub as a private repo, which is off unless you turn it on.
 - Pair with more than one Mac and switch between them from the Mac's name at the top of the list.
 
 To try it, build the app from [`ios/`](ios/README.md) in Xcode, then run the API on your Mac and scan the QR code it shows:
@@ -232,7 +233,7 @@ task web:dev  # hot reload, proxying /v1 to sbx-projects api on :7443
 ./sbx-projects api devices rm NAME # sign one out
 ```
 
-Flags: `--listen` (default `:7443`), `--name` (what the app calls this Mac, the host name by default), `--pair`, and the TUI's `--db`, `--sbx`, `--demo`, `--log` and `--log-level`. Pairing opens by itself while no phone is paired. The server writes its own debug log, printed with its addresses, which also records the HTTP server's errors; connections from clients that reject the certificate are only logged at `--log-level debug`.
+Flags: `--listen` (default `:7443`), `--name` (what the app calls this Mac, the host name by default), `--projects-dir` (where projects started from a phone go; by default the folder most of your projects are in, or `~/Projects`), `--pair`, and the TUI's `--db`, `--sbx`, `--demo`, `--log` and `--log-level`. Pairing opens by itself while no phone is paired. The server writes its own debug log, printed with its addresses, which also records the HTTP server's errors; connections from clients that reject the certificate are only logged at `--log-level debug`.
 
 - **Pairing.** The terminal shows a QR code and an 8-character code, valid once for 5 minutes. The QR code carries the Mac's addresses and its certificate's fingerprint. Five wrong codes close pairing.
 - **TLS.** The first run makes a self-signed certificate in `~/.local/share/sbx-projects/api/`. Phones pin its SHA-256 fingerprint, so it is never renewed; deleting it means pairing again.
@@ -254,3 +255,5 @@ The TUI and the API can run at once. Each probes running sandboxes on its own, a
 | `POST …/pr`, `…/stop`, `…/resume`, `…/checkout`; `DELETE /v1/sandboxes/{name}` | The TUI's actions. They answer at once with the sandbox busy; the outcome arrives as an `action` event |
 | `POST /v1/sandboxes` | Create a sandbox, as the New sandbox form does |
 | `GET /v1/options?project=ID` | Agents, models, MCP servers and the project's defaults for that form |
+| `POST /v1/projects` `{"name", "cloneUrl", "publish", "task"}` | Start a project in the projects folder, empty or cloned, and its first sandbox when there's a task. It answers once the project exists. Devices only name the project, never a path |
+| `GET /v1/project-options` | Where new projects go, and whether `gh` on the Mac can publish them |
