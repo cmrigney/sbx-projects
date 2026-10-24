@@ -55,21 +55,9 @@ func (s *Service) FillRemotes(projects []store.Project) {
 	}
 }
 
-// ProjectsDir is where new projects go: the folder most existing projects
-// sit in, or ~/Projects when there are none.
-func ProjectsDir(projects []store.Project) string {
-	count := map[string]int{}
-	best := ""
-	for _, p := range projects {
-		d := filepath.Dir(p.Path)
-		count[d]++
-		if best == "" || count[d] > count[best] {
-			best = d
-		}
-	}
-	if best != "" {
-		return best
-	}
+// ProjectsDir is where new projects go when no folder is given:
+// ~/Projects.
+func ProjectsDir() string {
 	if h, err := os.UserHomeDir(); err == nil {
 		return filepath.Join(h, "Projects")
 	}

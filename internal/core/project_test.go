@@ -154,12 +154,9 @@ func TestCloneURLs(t *testing.T) {
 }
 
 func TestProjectsDir(t *testing.T) {
-	ps := []store.Project{{Path: "/a/x"}, {Path: "/b/y"}, {Path: "/b/z"}}
-	if got := ProjectsDir(ps); got != "/b" {
-		t.Errorf("ProjectsDir = %q, want the folder most projects are in", got)
-	}
-	if got := ProjectsDir(nil); filepath.Base(got) != "Projects" {
-		t.Errorf("with no projects, new ones go in ~/Projects: %q", got)
+	h, _ := os.UserHomeDir()
+	if got := ProjectsDir(); got != filepath.Join(h, "Projects") {
+		t.Errorf("new projects go in ~/Projects: %q", got)
 	}
 }
 

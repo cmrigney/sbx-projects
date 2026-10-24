@@ -17,6 +17,7 @@ import (
 
 	"github.com/cmrigney/sbx-projects/internal/agent"
 	"github.com/cmrigney/sbx-projects/internal/applog"
+	"github.com/cmrigney/sbx-projects/internal/core"
 	"github.com/cmrigney/sbx-projects/internal/sbx"
 	"github.com/cmrigney/sbx-projects/internal/store"
 )
@@ -647,8 +648,8 @@ func TestAddProjectClonesAURL(t *testing.T) {
 	m.prompt.field = newField("git@github.com:cmrigney/tools.git")
 	drain(m, m.submitPrompt())
 	p := m.cur()
-	if p == nil || p.Name != "tools" || p.Path != "/src/tools" {
-		t.Fatalf("a URL should be cloned beside the other projects: %+v (%q)", p, m.msg)
+	if p == nil || p.Name != "tools" || p.Path != filepath.Join(core.ProjectsDir(), "tools") {
+		t.Fatalf("a URL should be cloned into ~/Projects: %+v (%q)", p, m.msg)
 	}
 	if m.modal == nil {
 		t.Fatal("the New sandbox form should open")

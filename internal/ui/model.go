@@ -1018,7 +1018,7 @@ func (m *Model) addProject(text string) tea.Cmd {
 		return m.say("Enter a path to a git repository or a URL to clone", cWarn)
 	}
 	if core.IsCloneURL(text) {
-		path := filepath.Join(core.ProjectsDir(m.projects), core.RepoName(text))
+		path := filepath.Join(core.ProjectsDir(), core.RepoName(text))
 		return m.makeProject(core.NewProjectRequest{Path: path, CloneURL: text})
 	}
 	path, err := filepath.Abs(expandHome(text))
