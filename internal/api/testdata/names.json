@@ -1,0 +1,106 @@
+{
+ "safe": [
+  [
+   "report.pdf",
+   "report.pdf"
+  ],
+  [
+   "C:\\Users\\me\\a b.txt",
+   "a_b.txt"
+  ],
+  [
+   "../../x",
+   "x"
+  ],
+  [
+   ".env",
+   "env"
+  ],
+  [
+   "",
+   "file"
+  ],
+  [
+   "   ",
+   "file"
+  ],
+  [
+   "$(rm -rf).sh",
+   "__rm_-rf_.sh"
+  ],
+  [
+   "résumé.pdf",
+   "résumé.pdf"
+  ],
+  [
+   "résumé.pdf",
+   "re_sume_.pdf"
+  ],
+  [
+   "日本語 ファイル.png",
+   "日本語_ファイル.png"
+  ],
+  [
+   "photo, 1.jpg",
+   "photo__1.jpg"
+  ],
+  [
+   "😀.png",
+   "_.png"
+  ],
+  [
+   "٣.txt",
+   "٣.txt"
+  ],
+  [
+   "½.txt",
+   "_.txt"
+  ],
+  [
+   "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx.txt",
+   "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx.txt"
+  ],
+  [
+   "yyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyy.zzzzzzzzzzzzzzzzzzzzzzzzz",
+   "yyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyy"
+  ]
+ ],
+ "unique": [
+  {
+   "names": [
+    "a b.txt",
+    "a_b.txt"
+   ],
+   "want": [
+    "a_b.txt",
+    "a_b-2.txt"
+   ]
+  },
+  {
+   "names": [
+    "image.png",
+    "image.png",
+    "image.png",
+    "notes",
+    "notes"
+   ],
+   "want": [
+    "image.png",
+    "image-2.png",
+    "image-3.png",
+    "notes",
+    "notes-2"
+   ]
+  },
+  {
+   "names": [
+    "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx.txt",
+    "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx.txt"
+   ],
+   "want": [
+    "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx.txt",
+    "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx-2.txt"
+   ]
+  }
+ ]
+}

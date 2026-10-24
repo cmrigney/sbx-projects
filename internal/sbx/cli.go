@@ -61,7 +61,7 @@ func (c *CLI) run(ctx context.Context, stdin string, args ...string) (string, er
 // listing and probing that runs every few seconds.
 func changes(args []string) bool {
 	switch args[0] {
-	case "run", "stop", "rm", "ports":
+	case "run", "stop", "rm", "ports", "cp":
 		return true
 	}
 	return false
@@ -146,6 +146,11 @@ func (c *CLI) PublishPort(ctx context.Context, name string, p Port) error {
 
 func (c *CLI) UnpublishPort(ctx context.Context, name string, p Port) error {
 	_, err := c.run(ctx, "", "ports", name, "--unpublish", p.Spec())
+	return err
+}
+
+func (c *CLI) CopyIn(ctx context.Context, name, src, dst string) error {
+	_, err := c.run(ctx, "", "cp", src, name+":"+dst)
 	return err
 }
 

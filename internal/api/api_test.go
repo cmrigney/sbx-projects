@@ -2,13 +2,21 @@ package api
 
 import (
 	"bufio"
+	"bytes"
 	"context"
 	"encoding/json"
 	"errors"
+	"io"
+	"maps"
+	"mime/multipart"
 	"net/http"
 	"net/http/httptest"
+	"os"
+	"path"
 	"path/filepath"
+	"slices"
 	"strings"
+	"sync"
 	"sync/atomic"
 	"testing"
 	"time"
@@ -459,5 +467,135 @@ func TestNewProject(t *testing.T) {
 	}
 	if st := f.do(t, "POST", "/v1/projects", `{"name":"fresh"}`, &errBody); st == http.StatusCreated {
 		t.Fatal("a project can't be made twice")
+	}
+}
+
+// postFiles sends a message with files as a multipart form.
+func (f *fixture) postFiles(t *testing.T, name, text string, files map[string]string) int {
+	t.Helper()
+	var body bytes.Buffer
+	mw := multipart.NewWriter(&body)
+	_ = mw.WriteField("text", text)
+	names := slices.Sorted(maps.Keys(files))
+	for _, n := range names {
+		fw, _ := mw.CreateFormFile("file", n)
+		_, _ = io.WriteString(fw, files[n])
+	}
+	mw.Close()
+	req, _ := http.NewRequest("POST", f.srv.URL+"/v1/sandboxes/"+name+"/messages", &body)
+	req.Header.Set("Authorization", "Bearer "+f.token)
+	req.Header.Set("Content-Type", mw.FormDataContentType())
+	resp, err := f.srv.Client().Do(req)
+	if err != nil {
+		t.Fatal(err)
+	}
+	resp.Body.Close()
+	return resp.StatusCode
+}
+
+// modes records the mode of each file copied into a sandbox.
+type modes struct {
+	*sbx.Mock
+	mu    sync.Mutex
+	modes []os.FileMode
+}
+
+func (m *modes) CopyIn(ctx context.Context, name, src, dst string) error {
+	if fi, err := os.Stat(src); err == nil {
+		m.mu.Lock()
+		m.modes = append(m.modes, fi.Mode().Perm())
+		m.mu.Unlock()
+	}
+	return m.Mock.CopyIn(ctx, name, src, dst)
+}
+
+func TestMessageWithFiles(t *testing.T) {
+	var mock *sbx.Mock
+	var be *modes
+	f := newFixtureWith(t, []sbx.MockSeed{{Name: "claude-a", Agent: "claude", Workspace: "/src/repo"}},
+		func(m *sbx.Mock) sbx.Backend { mock = m; be = &modes{Mock: m}; return be })
+	f.waitFor(t, func(m map[string]SandboxView) bool { _, ok := m["claude-a"]; return ok })
+
+	if st := f.postFiles(t, "claude-a", "  ", nil); st != http.StatusBadRequest {
+		t.Errorf("an empty message = %d, want 400", st)
+	}
+	// The sandbox is stopped, so it is started before the files go in.
+	files := map[string]string{"../../etc/passwd": "x", "my shot.png": "png", "dir/my shot.png": "png2"}
+	if st := f.postFiles(t, "claude-a", "what's wrong here?", files); st != http.StatusAccepted {
+		t.Fatalf("send = %d", st)
+	}
+	f.waitFor(t, func(m map[string]SandboxView) bool { return m["claude-a"].Running && !m["claude-a"].Busy })
+	copied := mock.Copied("claude-a")
+	if len(copied) != 3 {
+		t.Fatalf("copied %v", copied)
+	}
+	var names []string
+	for _, p := range copied {
+		if !strings.HasPrefix(p, core.AttachDir+"/") {
+			t.Errorf("%s isn't under %s", p, core.AttachDir)
+		}
+		names = append(names, path.Base(p))
+	}
+	if got := strings.Join(names, ","); got != "passwd,my_shot.png,my_shot-2.png" {
+		t.Errorf("names = %s", got)
+	}
+	// sbx cp keeps the mode and the Mac user's uid, so the sandbox user
+	// can only read files everyone can.
+	be.mu.Lock()
+	for _, m := range be.modes {
+		if m&0o004 == 0 {
+			t.Errorf("a file was copied with mode %v, which the sandbox user can't read", m)
+		}
+	}
+	be.mu.Unlock()
+
+	if st := f.postFiles(t, "claude-a", strings.Repeat("x", maxText+1), nil); st != http.StatusRequestEntityTooLarge {
+		t.Errorf("text over the limit = %d, want 413", st)
+	}
+
+	big := maxUpload
+	maxUpload = 10
+	defer func() { maxUpload = big }()
+	if st := f.postFiles(t, "claude-a", "", map[string]string{"a": strings.Repeat("x", 2<<20)}); st != http.StatusRequestEntityTooLarge {
+		t.Errorf("a file over the limit = %d, want 413", st)
+	}
+}
+
+// TestNames runs the cases the web and iPhone apps' copies of safeName
+// and uniqueName are tested against too.
+func TestNames(t *testing.T) {
+	b, err := os.ReadFile("testdata/names.json")
+	if err != nil {
+		t.Fatal(err)
+	}
+	var cases struct {
+		Safe   [][2]string
+		Unique []struct{ Names, Want []string }
+	}
+	if err := json.Unmarshal(b, &cases); err != nil {
+		t.Fatal(err)
+	}
+	for _, c := range cases.Safe {
+		got := safeName(c[0])
+		if got != c[1] {
+			t.Errorf("safeName(%q) = %q, want %q", c[0], got, c[1])
+		}
+		if again := safeName(got); again != got {
+			t.Errorf("safeName(%q) = %q, want it unchanged", got, again)
+		}
+	}
+	for _, c := range cases.Unique {
+		taken := map[string]bool{}
+		var got []string
+		for _, n := range c.Names {
+			name := uniqueName(safeName(n), taken)
+			if again := safeName(name); again != name {
+				t.Errorf("safeName(%q) = %q, want a numbered name unchanged", name, again)
+			}
+			got = append(got, name)
+		}
+		if !slices.Equal(got, c.Want) {
+			t.Errorf("names for %q = %q, want %q", c.Names, got, c.Want)
+		}
 	}
 }

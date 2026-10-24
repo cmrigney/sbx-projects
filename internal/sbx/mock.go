@@ -35,6 +35,7 @@ type mockSandbox struct {
 	commits []string
 	files   []string
 	script  []map[string]any
+	copied  []string
 }
 
 type MockSeed struct {
@@ -200,6 +201,30 @@ func (m *Mock) UnpublishPort(ctx context.Context, name string, p Port) error {
 	return m.with(name, func(s *mockSandbox) {
 		s.Ports = slices.DeleteFunc(slices.Clone(s.Ports), func(q Port) bool { return q == p })
 	})
+}
+
+func (m *Mock) CopyIn(ctx context.Context, name, src, dst string) error {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	s, ok := m.sbxs[name]
+	if !ok {
+		return fmt.Errorf("sbx cp: no such sandbox %q", name)
+	}
+	if s.Status != "running" {
+		return fmt.Errorf("sbx cp: sandbox %q is not running", name)
+	}
+	s.copied = append(s.copied, dst)
+	return nil
+}
+
+// Copied lists the paths CopyIn has put files at in the sandbox.
+func (m *Mock) Copied(name string) []string {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	if s, ok := m.sbxs[name]; ok {
+		return slices.Clone(s.copied)
+	}
+	return nil
 }
 
 var (

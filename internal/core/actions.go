@@ -5,6 +5,8 @@ import (
 	"errors"
 	"fmt"
 	"os/exec"
+	"path"
+	"path/filepath"
 	"strings"
 
 	"github.com/cmrigney/sbx-projects/internal/agent"
@@ -120,6 +122,70 @@ func (s *Service) Send(rec *store.Sandbox, running, agentUp bool, text string) [
 	return []Step{{Busy: "Sending your message", Verb: "Messaging", Run: func(ctx context.Context) (string, error) {
 		return be.Exec(ctx, name, agent.SendScript(text))
 	}}}
+}
+
+// AttachDir is where attached files go in a sandbox. It is outside the
+// workspace, so they never show up as changes or get committed.
+const AttachDir = "/tmp/sbx-attachments"
+
+// SendFiles copies files on the host into dir in the sandbox, then sends
+// text as Send does. sbx cp needs the sandbox running, so a stopped one is
+// started before the copy. The text should name the files' paths in the
+// sandbox, as AttachNote does.
+func (s *Service) SendFiles(rec *store.Sandbox, running, agentUp bool, text, dir string, files []string) []Step {
+	steps := s.Send(rec, running, agentUp, text)
+	if len(files) == 0 {
+		return steps
+	}
+	attach := s.copyIn(rec.Name, dir, files)
+	if !running {
+		return append([]Step{steps[0], attach}, steps[1:]...)
+	}
+	return append([]Step{attach}, steps...)
+}
+
+// copyIn makes dir in the sandbox and copies each file into it under its
+// own name. dir is made by the caller, so it needs no quoting beyond
+// what's here.
+func (s *Service) copyIn(name, dir string, files []string) Step {
+	be := s.Backend
+	busy := "Attaching a file"
+	if len(files) > 1 {
+		busy = fmt.Sprintf("Attaching %d files", len(files))
+	}
+	return Step{Busy: busy, Verb: "Attaching files to", Run: func(ctx context.Context) (string, error) {
+		if _, err := be.Exec(ctx, name, fmt.Sprintf("mkdir -p '%s'", dir)); err != nil {
+			return "", err
+		}
+		for _, f := range files {
+			if err := be.CopyIn(ctx, name, f, path.Join(dir, filepath.Base(f))); err != nil {
+				return "", err
+			}
+		}
+		// The copies keep the Mac user's uid, so the agent can read them
+		// but not change or delete them. Giving them to the sandbox's user
+		// needs sudo, which a sandbox may not allow, so it is only tried.
+		_, err := be.Exec(ctx, name, fmt.Sprintf(`sudo -n chown -R "$(id -u):$(id -g)" '%s' 2>/dev/null || true`, dir))
+		return "", err
+	}}
+}
+
+// AttachNote adds the paths of attached files to a message, on the same
+// line so the agent's prompt doesn't take a newline as Enter. A message
+// with no text is just the list.
+func AttachNote(text string, paths []string) string {
+	if len(paths) == 0 {
+		return text
+	}
+	what := "Attached file: "
+	if len(paths) > 1 {
+		what = "Attached files: "
+	}
+	note := what + strings.Join(paths, ", ")
+	if text == "" {
+		return note
+	}
+	return text + " (" + note + ")"
 }
 
 // CheckoutLocal pulls a clone-mode sandbox's branch into the project's own

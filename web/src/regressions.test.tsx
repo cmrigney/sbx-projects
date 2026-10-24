@@ -2,7 +2,9 @@
 import { act, useState } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
-import { Sheet } from "./components";
+import { Sheet, attachProblem, maxFileBytes, maxFiles, withUniqueNames } from "./components";
+import { safeName, uniqueName } from "./names";
+import names from "../../internal/api/testdata/names.json";
 import { AppProvider, useApp } from "./store";
 import { Client, type Sandbox, type ServerEvent } from "./api";
 import { NewProject } from "./views/NewProject";
@@ -110,4 +112,37 @@ it("makes a project and opens the New sandbox form on it", async () => {
   expect(made).toHaveBeenCalledWith({ name: "", cloneUrl: "git@github.com:o/tools.git", publish: false, task: "" });
   expect(app.projects.map((p) => p.id)).toEqual([7]);
   expect(location.hash).toBe("#/new?project=7");
+});
+
+it("names attached files as the Mac will in the sandbox", () => {
+  for (const [name, want] of names.safe) expect(safeName(name)).toBe(want);
+  for (const c of names.unique) {
+    const taken = new Set<string>();
+    expect(c.names.map((n) => uniqueName(safeName(n), taken))).toEqual(c.want);
+  }
+  const file = (name: string) => new File(["x"], name, { type: "image/png" });
+  const named = withUniqueNames([file("image.png")], [file("image.png"), file("a b.txt"), file("a_b.txt")]).map((f) => f.name);
+  expect(named).toEqual(["image.png", "image-2.png", "a_b.txt", "a_b-2.txt"]);
+});
+
+it("refuses more files than the Mac takes in one message", () => {
+  const big = new File([new Uint8Array(maxFileBytes + 1)], "big.bin");
+  expect(attachProblem([big])).toMatch(/MB/);
+  expect(attachProblem(Array.from({ length: maxFiles + 1 }, (_, i) => new File(["x"], `${i}`)))).toMatch(/at most/);
+  expect(attachProblem([new File(["x"], "ok")])).toBeNull();
+});
+
+it("sends attached files as a form and plain messages as JSON", async () => {
+  const fetch = vi.spyOn(globalThis, "fetch").mockImplementation(async () => new Response("{}"));
+  const c = new Client("t");
+  await c.message("a b", "hi");
+  await c.message("a b", "look", [new File(["x"], "shot.png")]);
+  const [[url, plain], [, withFiles]] = fetch.mock.calls as [string, RequestInit][];
+  expect(url).toBe("/v1/sandboxes/a%20b/messages");
+  expect(plain.body).toBe(JSON.stringify({ text: "hi" }));
+  expect((plain.headers as Record<string, string>)["Content-Type"]).toBe("application/json");
+  const form = withFiles.body as FormData;
+  expect(form.get("text")).toBe("look");
+  expect((form.get("file") as File).name).toBe("shot.png");
+  expect((withFiles.headers as Record<string, string>)["Content-Type"]).toBeUndefined();
 });

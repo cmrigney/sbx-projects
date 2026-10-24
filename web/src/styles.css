@@ -1353,9 +1353,7 @@ a.file:active {
 .composer {
   position: relative;
   display: flex;
-  align-items: flex-end;
-  gap: 8px;
-  padding: 5px 5px 5px 0;
+  flex-direction: column;
   border: 1px solid var(--line);
   border-radius: 12px;
   background: var(--panel);
@@ -1366,14 +1364,87 @@ a.file:active {
   box-shadow: 0 0 0 3px var(--accent-tint);
 }
 
-.composer-prompt {
+.composer-row {
+  display: flex;
+  align-items: flex-end;
+  gap: 8px;
+  padding: 5px 5px 5px 0;
+}
+
+.composer-attach {
   flex: none;
-  align-self: stretch;
   display: grid;
   place-items: center;
   width: 34px;
-  max-height: 36px;
+  height: 36px;
+  border: 0;
+  background: none;
+  padding: 0;
   color: var(--accent);
+}
+
+.composer-attach:hover {
+  color: var(--text);
+}
+
+.attachments {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin: 0;
+  padding: 8px 8px 0;
+  list-style: none;
+}
+
+.attachment {
+  display: flex;
+  align-items: center;
+  max-width: 100%;
+  min-width: 0;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--panel-2);
+  font-size: 12.5px;
+}
+
+.attachment-name {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+  border: 0;
+  background: none;
+  padding: 4px 4px 4px 8px;
+  color: var(--text);
+  font: inherit;
+}
+
+.attachment-name span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-family: var(--mono);
+}
+
+.attachment-name small {
+  flex: none;
+  color: var(--dim);
+}
+
+.attachment-remove {
+  flex: none;
+  display: grid;
+  place-items: center;
+  width: 26px;
+  height: 26px;
+  border: 0;
+  background: none;
+  padding: 0;
+  color: var(--muted);
+}
+
+.attachment-remove:hover {
+  color: var(--s-fail);
 }
 
 .composer textarea {
