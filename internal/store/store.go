@@ -232,6 +232,11 @@ func (s *Store) SetLayout(projectID int64, l Layout) error {
 
 // SetKits replaces the project's default kits. Existing sandboxes keep
 // the kits they were created with.
+func (s *Store) SetRemote(projectID int64, remote string) error {
+	_, err := s.db.Exec(`UPDATE projects SET remote = ? WHERE id = ?`, remote, projectID)
+	return err
+}
+
 func (s *Store) SetKits(projectID int64, kits []string) error {
 	_, err := s.db.Exec(`UPDATE projects SET kits = ? WHERE id = ?`, joinLines(kits), projectID)
 	return err

@@ -4,6 +4,8 @@ import UIKit
 /// The TUI's New sandbox form. It starts with what the project remembers:
 /// its kits, and the model and MCP servers last picked.
 struct NewSandboxView: View {
+    /// The project to start in; nil picks the first.
+    var project: Int64? = nil
     let onCreated: (Sandbox) -> Void
 
     @Environment(AppModel.self) private var app
@@ -52,7 +54,7 @@ struct NewSandboxView: View {
             }
             .task(id: projectID) { await loadOptions() }
             .onAppear {
-                if projectID == nil { projectID = app.projects.first?.id }
+                if projectID == nil { projectID = project ?? app.projects.first?.id }
             }
         }
         .interactiveDismissDisabled(creating)

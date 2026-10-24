@@ -125,6 +125,17 @@ nonisolated final class APIClient: Sendable {
         try await perform(request("POST", "/v1/sandboxes", body: r))
     }
 
+    /// Answers once the project exists, which for a clone can take minutes.
+    func newProject(_ r: NewProjectRequest) async throws -> NewProjectResult {
+        var req = request("POST", "/v1/projects", body: r)
+        req.timeoutInterval = 15 * 60
+        return try await perform(req)
+    }
+
+    func projectOptions() async throws -> ProjectOptions {
+        try await perform(request("GET", "/v1/project-options"))
+    }
+
     /// Opens the agent's terminal, as Enter attaches to it in the TUI.
     /// Output arrives as binary frames; send keystrokes as binary frames and
     /// resizes as JSON text. The session's delegate pins the certificate.

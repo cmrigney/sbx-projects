@@ -424,3 +424,40 @@ func TestPublishAndUnpublishAPort(t *testing.T) {
 		t.Fatalf("port = %+v, want 0.0.0.0:5173 → 5173", p)
 	}
 }
+
+func TestNewProject(t *testing.T) {
+	f := newFixture(t, nil)
+	var errBody map[string]string
+	for _, body := range []string{`{"name":"../escape"}`, `{"name":"a/b"}`, `{}`, `{"name":"x","cloneUrl":"/etc"}`} {
+		if st := f.do(t, "POST", "/v1/projects", body, &errBody); st != http.StatusBadRequest {
+			t.Fatalf("%s: %d %v", body, st, errBody)
+		}
+	}
+	var opts ProjectOptionsView
+	if f.do(t, "GET", "/v1/project-options", "", &opts); opts.Dir != "~/Projects" {
+		t.Fatalf("new projects should go in ~/Projects: %+v", opts)
+	}
+
+	// A URL names the project when no name is given.
+	var cloned NewProjectView
+	if st := f.do(t, "POST", "/v1/projects", `{"cloneUrl":"git@github.com:o/tools.git"}`, &cloned); st != http.StatusCreated ||
+		cloned.Project.Name != "tools" || cloned.Project.Path != filepath.Join(core.ProjectsDir(), "tools") || cloned.Sandbox != nil {
+		t.Fatalf("clone: %d %+v", st, cloned)
+	}
+
+	// With a task, the first sandbox starts too.
+	var v NewProjectView
+	st := f.do(t, "POST", "/v1/projects", `{"name":"fresh","task":"Build a todo app"}`, &v)
+	if st != http.StatusCreated || v.Project.Name != "fresh" || v.Sandbox == nil || v.Sandbox.Title != "Build a todo app" || !v.Sandbox.Clone {
+		t.Fatalf("new project: %d %+v", st, v)
+	}
+	f.waitFor(t, func(m map[string]SandboxView) bool { s := m[v.Sandbox.Name]; return s.Running && !s.Busy })
+	var ps []ProjectView
+	f.do(t, "GET", "/v1/projects", "", &ps)
+	if len(ps) != 3 {
+		t.Fatalf("projects = %+v", ps)
+	}
+	if st := f.do(t, "POST", "/v1/projects", `{"name":"fresh"}`, &errBody); st == http.StatusCreated {
+		t.Fatal("a project can't be made twice")
+	}
+}

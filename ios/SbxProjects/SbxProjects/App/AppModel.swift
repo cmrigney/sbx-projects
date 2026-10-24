@@ -307,6 +307,10 @@ final class AppModel {
         try await api().options(project: project)
     }
 
+    func projectOptions() async throws -> ProjectOptions {
+        try await api().projectOptions()
+    }
+
     func terminal(_ name: String, cols: Int, rows: Int) throws -> URLSessionWebSocketTask {
         try api().terminal(name, cols: cols, rows: rows)
     }
@@ -397,6 +401,38 @@ final class AppModel {
         }
         applyResponse(s, since: mark)
         return s
+    }
+
+    /// Makes a project, and its first sandbox when given a task. Returns
+    /// once the project exists.
+    func newProject(_ r: NewProjectRequest) async throws -> NewProjectResult {
+        let mark = streamSeq
+        creating += 1
+        defer {
+            creating -= 1
+            if creating == 0 {
+                finishedEarly = [:]
+            }
+        }
+        let res = try await api().newProject(r)
+        // The stream sends the projects too; this shows the new one without waiting.
+        if !projects.contains(where: { $0.id == res.project.id }) {
+            projects = (projects + [res.project]).sorted { $0.name.localizedCaseInsensitiveCompare($1.name) == .orderedAscending }
+        }
+        if let s = res.sandbox {
+            if let t = finishedEarly.removeValue(forKey: s.name) {
+                if t.ok {
+                    toast = t
+                }
+            } else {
+                pending.insert(s.name)
+            }
+            applyResponse(s, since: mark)
+        }
+        if let w = res.warning {
+            toast = Toast(message: w, ok: false)
+        }
+        return res
     }
 
     // MARK: Lists

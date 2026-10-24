@@ -119,6 +119,30 @@ export interface CreateRequest {
   mcps: string[];
 }
 
+export interface NewProjectRequest {
+  /** The project's folder, made in the Mac's projects folder. Left empty, a clone is named after its URL. */
+  name: string;
+  cloneUrl: string;
+  /** Creates a private GitHub repo for a new project. */
+  publish: boolean;
+  /** When set, starts a first sandbox with it. */
+  task: string;
+}
+
+export interface NewProjectResult {
+  project: Project;
+  sandbox?: Sandbox;
+  /** A step that failed after the project was added, such as publishing it. */
+  warning?: string;
+}
+
+export interface ProjectOptions {
+  /** Where new projects go on the Mac. */
+  dir: string;
+  /** Whether gh is installed and signed in on the Mac. */
+  canPublish: boolean;
+}
+
 export interface ServerInfo {
   id: string;
   name: string;
@@ -218,6 +242,8 @@ export class Client {
   remove = (name: string) => this.call<Sandbox>("DELETE", `/v1/sandboxes/${enc(name)}`);
   create = (r: CreateRequest) => this.call<Sandbox>("POST", "/v1/sandboxes", r);
   options = (project: number) => this.call<Options>("GET", `/v1/options?project=${project}`);
+  newProject = (r: NewProjectRequest) => this.call<NewProjectResult>("POST", "/v1/projects", r);
+  projectOptions = () => this.call<ProjectOptions>("GET", "/v1/project-options");
 
   /**
    * Opens the agent's terminal. Browsers can't send headers on a WebSocket,

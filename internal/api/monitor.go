@@ -56,6 +56,9 @@ func NewMonitor(svc *core.Service) (*Monitor, error) {
 		busy: map[string]string{}, noProbeUntil: map[string]time.Time{},
 		sent: map[string]SandboxView{}, subs: map[chan Event]struct{}{}, kick: make(chan struct{}, 1),
 	}
+	if ps, err := svc.Store.Projects(); err == nil {
+		svc.FillRemotes(ps)
+	}
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	if err := m.reload(); err != nil {

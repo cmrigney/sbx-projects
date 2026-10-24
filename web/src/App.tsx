@@ -1,6 +1,7 @@
 import { Suspense, lazy, useSyncExternalStore } from "react";
 import { useApp } from "./store";
 import { Empty, Toasts, useRoute } from "./components";
+import { NewProject } from "./views/NewProject";
 import { NewSandbox } from "./views/NewSandbox";
 import { Pairing } from "./views/Pairing";
 import { SandboxDetail } from "./views/SandboxDetail";
@@ -55,7 +56,8 @@ export function App() {
           </main>
         )
       )}
-      {route.page === "new" && <NewSandbox />}
+      {route.page === "new" && <NewSandbox project={route.project} />}
+      {route.page === "new-project" && <NewProject />}
       {route.page === "sandbox" && open && route.sheet === "reply" && <ReplySheet sandbox={open} />}
       {route.page === "sandbox" && open && route.sheet === "diff" && <DiffSheet sandbox={open} file={route.file} />}
       {route.page === "sandbox" && open && route.sheet === "remove" && <RemoveSheet sandbox={open} />}

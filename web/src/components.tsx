@@ -11,12 +11,17 @@ export type Sheet = "reply" | "diff" | "remove" | "terminal";
 export type Route =
   | { page: "list" }
   | { page: "sandbox"; name: string; sheet?: Sheet; file?: string }
-  | { page: "new" };
+  | { page: "new"; project?: number }
+  | { page: "new-project" };
 
 function parse(hash: string): Route {
   const [path, query] = hash.replace(/^#/, "").split("?");
   const parts = path.split("/").filter(Boolean).map(decodeURIComponent);
-  if (parts[0] === "new") return { page: "new" };
+  if (parts[0] === "new") {
+    const project = Number(new URLSearchParams(query).get("project"));
+    return project ? { page: "new", project } : { page: "new" };
+  }
+  if (parts[0] === "new-project") return { page: "new-project" };
   if (parts[0] === "s" && parts[1]) {
     const sheet = parts[2] as Sheet | undefined;
     const file = new URLSearchParams(query).get("file") ?? undefined;
@@ -30,7 +35,9 @@ export function href(r: Route): string {
     case "list":
       return "#/";
     case "new":
-      return "#/new";
+      return r.project ? `#/new?project=${r.project}` : "#/new";
+    case "new-project":
+      return "#/new-project";
     case "sandbox": {
       let h = `#/s/${encodeURIComponent(r.name)}`;
       if (r.sheet) h += `/${r.sheet}`;
@@ -252,6 +259,7 @@ const icons = {
   warn: <path d="M12 4 2.8 19.5h18.4zM12 10v4.5m0 2.5h.01" {...line} />,
   lock: <path d="M7 11V8a5 5 0 0 1 10 0v3M5.5 11h13v9h-13z" {...line} />,
   terminal: <path d="M4 5h16v14H4zM8 10l3 2.5L8 15m5 0h3" {...line} />,
+  folderPlus: <path d="M3.5 6h6l2 2h9v11h-17zM12 11v5.5M9.25 13.75h5.5" {...line} />,
   // The sandbox from the app icon.
   box: (
     <>

@@ -1,12 +1,26 @@
 import SwiftUI
 import UIKit
 
+/// The forms the list opens. A new project without a first sandbox hands
+/// over to New Sandbox on that project.
+private enum NewSheet: Identifiable {
+    case sandbox(project: Int64?)
+    case project
+
+    var id: String {
+        switch self {
+        case .sandbox(let p): "sandbox-\(p ?? 0)"
+        case .project: "project"
+        }
+    }
+}
+
 struct SandboxListView: View {
     @Environment(AppModel.self) private var app
     /// Nil shows every sandbox but the parked ones, which have their own chip.
     @State private var filter: StatusGroup?
     @State private var query = ""
-    @State private var showNew = false
+    @State private var newSheet: NewSheet?
     @State private var addingMac = false
     @State private var path: [String] = []
 
@@ -51,21 +65,40 @@ struct SandboxListView: View {
             .toolbar {
                 ToolbarItem(placement: .topBarLeading) { HostPill { addingMac = true } }
                 ToolbarItem(placement: .topBarTrailing) {
-                    Button { showNew = true } label: { Image(systemName: "plus") }
-                        .accessibilityLabel("New sandbox")
-                        .disabled(app.projects.isEmpty)
+                    Menu {
+                        Button { newSheet = .sandbox(project: nil) } label: { Label("New Sandbox", systemImage: "terminal") }
+                            .disabled(app.projects.isEmpty)
+                        Button { newSheet = .project } label: { Label("New Project", systemImage: "folder.badge.plus") }
+                    } label: {
+                        Image(systemName: "plus")
+                    } primaryAction: {
+                        newSheet = app.projects.isEmpty ? .project : .sandbox(project: nil)
+                    }
+                    .accessibilityLabel("New")
                 }
             }
-            .sheet(isPresented: $showNew) {
-                NewSandboxView { path.append($0.name) }
+            .sheet(item: $newSheet) { sheet in
+                switch sheet {
+                case .sandbox(let project):
+                    NewSandboxView(project: project) { path.append($0.name) }
+                case .project:
+                    NewProjectView { project, sandbox in
+                        if let sandbox {
+                            newSheet = nil
+                            path.append(sandbox.name)
+                        } else {
+                            newSheet = .sandbox(project: project.id)
+                        }
+                    }
+                }
             }
             .sheet(isPresented: $addingMac) { PairingView(adding: true) }
             // The open sandbox belongs to the Mac shown before.
             .onChange(of: app.server?.id) {
                 path = []
-                showNew = false
+                newSheet = nil
             }
-            .overlay { EmptyList(visible: visibleCount, filter: filter, query: query) }
+            .overlay { EmptyList(visible: visibleCount, filter: filter, query: query) { newSheet = .project } }
         }
     }
 }
@@ -76,13 +109,19 @@ private struct EmptyList: View {
     let visible: Int
     let filter: StatusGroup?
     let query: String
+    let newProject: () -> Void
 
     var body: some View {
         if app.connection != .live {
             EmptyView()
         } else if app.projects.isEmpty {
-            ContentUnavailableView("No projects yet", systemImage: "folder",
-                                   description: Text("Run sbx-projects in a git repository on your Mac to add it as a project."))
+            ContentUnavailableView {
+                Label("No projects yet", systemImage: "folder")
+            } description: {
+                Text("Start one from scratch or clone a repo onto your Mac.")
+            } actions: {
+                Button("New Project", action: newProject).buttonStyle(.borderedProminent)
+            }
         } else if app.sandboxes.isEmpty {
             ContentUnavailableView("No sandboxes", systemImage: "terminal",
                                    description: Text("Tap + to start an agent on a new branch."))

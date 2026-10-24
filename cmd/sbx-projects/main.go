@@ -15,6 +15,7 @@ import (
 	tea "charm.land/bubbletea/v2"
 
 	"github.com/cmrigney/sbx-projects/internal/applog"
+	"github.com/cmrigney/sbx-projects/internal/core"
 	"github.com/cmrigney/sbx-projects/internal/sbx"
 	"github.com/cmrigney/sbx-projects/internal/store"
 	"github.com/cmrigney/sbx-projects/internal/ui"
@@ -115,26 +116,13 @@ func openBackend(dbPath, sbxBin string, demo bool) (*store.Store, sbx.Backend, e
 // addIfRepo seeds the first project from the working directory so a fresh
 // install opens on something useful.
 func addIfRepo(st *store.Store, path string) {
-	out, err := exec.Command("git", "-C", path, "rev-parse", "--show-toplevel").Output()
+	p, err := core.InspectRepo(path)
 	if err != nil {
 		return
 	}
-	root := strings.TrimSpace(string(out))
-	p := store.Project{Name: lastElem(root), Path: root}
-	if h, err := exec.Command("git", "-C", root, "symbolic-ref", "--short", "refs/remotes/origin/HEAD").Output(); err == nil {
-		p.DefaultBranch = strings.TrimPrefix(strings.TrimSpace(string(h)), "origin/")
-	}
 	if _, err := st.AddProject(p); err != nil {
-		slog.Warn("add the first project", "path", root, "err", err)
+		slog.Warn("add the first project", "path", p.Path, "err", err)
 	}
-}
-
-func lastElem(p string) string {
-	p = strings.TrimRight(p, "/")
-	if i := strings.LastIndexByte(p, '/'); i >= 0 {
-		return p[i+1:]
-	}
-	return p
 }
 
 func hostMemMiB() int64 {

@@ -4,6 +4,9 @@ import (
 	"context"
 	"fmt"
 	"log/slog"
+	"os"
+	"os/exec"
+	"path/filepath"
 	"regexp"
 	"slices"
 	"strings"
@@ -14,6 +17,7 @@ import (
 
 	"github.com/cmrigney/sbx-projects/internal/agent"
 	"github.com/cmrigney/sbx-projects/internal/applog"
+	"github.com/cmrigney/sbx-projects/internal/core"
 	"github.com/cmrigney/sbx-projects/internal/sbx"
 	"github.com/cmrigney/sbx-projects/internal/store"
 )
@@ -91,6 +95,10 @@ func TestRendersAtManySizes(t *testing.T) {
 		func() { m.openAddProject() },
 		func() { _ = m.openKits() },
 		func() { _ = m.askRemove() },
+		func() {
+			m.confirm = &confirmBox{title: "Start a new project?", body: "Makes ~/Projects/x.", yes: "Create", safe: true,
+				altKey: "g", alt: "Create and publish", fn: func() tea.Cmd { return nil }, altFn: func() tea.Cmd { return nil }}
+		},
 		func() {
 			m.selectName("claude-a")
 			m.probes["claude-a"].Recap = &agent.Recap{When: time.Now(), Text: strings.Repeat("A long reply line that wraps. ", 40)}
@@ -599,5 +607,51 @@ func TestChop(t *testing.T) {
 	}
 	if got := chop("", 3); !slices.Equal(got, []string{""}) {
 		t.Fatalf("chop empty = %q", got)
+	}
+}
+
+func TestAddProjectStartsOneFromScratch(t *testing.T) {
+	if _, err := exec.LookPath("git"); err != nil {
+		t.Skip("git is not installed")
+	}
+	cfg := filepath.Join(t.TempDir(), "gitconfig")
+	_ = os.WriteFile(cfg, []byte("[user]\n\tname = Test\n\temail = test@example.com\n"), 0o644)
+	t.Setenv("GIT_CONFIG_GLOBAL", cfg)
+	t.Setenv("GIT_CONFIG_NOSYSTEM", "1")
+	m, _ := newTestModel(t)
+	m.mock, m.svc.Demo = false, false
+	path := filepath.Join(t.TempDir(), "brand-new")
+
+	m.openAddProject()
+	m.prompt.field = newField(path)
+	drain(m, m.submitPrompt())
+	if m.confirm == nil || m.confirm.yes != "Create" {
+		t.Fatalf("a folder that doesn't exist should offer to start a project: %+v", m.confirm)
+	}
+	drain(m, m.confirmYes())
+
+	p := m.cur()
+	if p == nil || p.Path != path || m.making != "" {
+		t.Fatalf("the new project should be selected once made: %+v, making %q, msg %q", p, m.making, m.msg)
+	}
+	if m.modal == nil || m.modal.f != fTask {
+		t.Fatal("the New sandbox form should open on the first instruction")
+	}
+	if _, err := os.Stat(filepath.Join(path, ".git")); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func TestAddProjectClonesAURL(t *testing.T) {
+	m, _ := newTestModel(t)
+	m.openAddProject()
+	m.prompt.field = newField("git@github.com:cmrigney/tools.git")
+	drain(m, m.submitPrompt())
+	p := m.cur()
+	if p == nil || p.Name != "tools" || p.Path != filepath.Join(core.ProjectsDir(), "tools") {
+		t.Fatalf("a URL should be cloned into ~/Projects: %+v (%q)", p, m.msg)
+	}
+	if m.modal == nil {
+		t.Fatal("the New sandbox form should open")
 	}
 }

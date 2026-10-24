@@ -241,6 +241,31 @@ nonisolated struct CreateRequest: Codable, Sendable {
     let mcps: [String]
 }
 
+nonisolated struct NewProjectRequest: Codable, Sendable {
+    /// The project's folder, made in the Mac's projects folder. Left empty,
+    /// a clone is named after its URL.
+    let name: String
+    let cloneUrl: String
+    /// Creates a private GitHub repo for a new project.
+    let publish: Bool
+    /// When set, starts a first sandbox with it.
+    let task: String
+}
+
+nonisolated struct NewProjectResult: Codable, Sendable {
+    let project: Project
+    let sandbox: Sandbox?
+    /// A step that failed after the project was added, such as publishing it.
+    let warning: String?
+}
+
+nonisolated struct ProjectOptions: Codable, Sendable {
+    /// Where new projects go on the Mac.
+    let dir: String
+    /// Whether gh is installed and signed in on the Mac.
+    let canPublish: Bool
+}
+
 /// One line of /v1/events.
 nonisolated struct ServerEvent: Codable, Sendable {
     let type: String

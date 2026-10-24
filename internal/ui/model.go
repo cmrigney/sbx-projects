@@ -109,6 +109,8 @@ type Model struct {
 	modal   *newForm
 	prompt  *promptForm
 	confirm *confirmBox
+	// making describes the step a new project is on, while it's being made.
+	making string
 
 	msg     string
 	msgKind string
@@ -132,6 +134,8 @@ func New(o Options) (*Model, error) {
 	if err := m.reload(); err != nil {
 		return nil, err
 	}
+	m.svc.FillRemotes(m.projects)
+	m.reloadOrWarn()
 	if p := m.projectFor(o.StartPath); p != nil {
 		for i := range m.projects {
 			if m.projects[i].ID == p.ID {
@@ -308,6 +312,11 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.onDiff(msg)
 	case mcpListMsg:
 		msg.form.onMCPList(msg)
+	case projectNext:
+		m.making = msg.steps[0].Busy
+		return m, m.projectStep(msg.p, msg.name, msg.steps)
+	case projectMsg:
+		return m, m.onProject(msg)
 	case execDoneMsg:
 		if msg.attached {
 			m.markSeen(msg.name)
@@ -803,7 +812,7 @@ func (m *Model) openPR() tea.Cmd {
 	if !ok || it.busy != "" {
 		return nil
 	}
-	if why := core.PRBlocker(it.rec, it.probe); why != "" {
+	if why := core.PRBlocker(*m.cur(), it.rec, it.probe); why != "" {
 		return m.say(why, cWarn)
 	}
 	return m.sendPrompt(it, core.PRPrompt(m.cur().DefaultBranch), "Asked "+it.name()+" to open a draft PR")
@@ -813,8 +822,8 @@ func (m *Model) sendPrompt(it item, text, done string) tea.Cmd {
 	return m.run(it.name(), m.svc.Send(it.rec, it.running(), it.agentUp, text), nil, done)
 }
 
-func canPR(it item) bool {
-	return core.CanPR(it.rec, it.probe) && it.busy == ""
+func (m *Model) canPR(it item) bool {
+	return core.CanPR(m.projectByID(it.rec.ProjectID), it.rec, it.probe) && it.busy == ""
 }
 
 func canCheckout(it item) bool {
@@ -1000,12 +1009,55 @@ func (m *Model) openIDE() tea.Cmd {
 	return m.say("Opening "+host+" in "+filepath.Base(ide), cOk)
 }
 
-func (m *Model) addProject(path string) tea.Cmd {
-	path = expandHome(strings.TrimSpace(path))
-	p, err := inspectRepo(path, m.mock)
+// addProject adds the repo at what the user typed. A URL is cloned into
+// the projects folder; a folder that doesn't exist, or isn't a repo yet,
+// can be started as a new project.
+func (m *Model) addProject(text string) tea.Cmd {
+	text = strings.TrimSpace(text)
+	if text == "" {
+		return m.say("Enter a path to a git repository or a URL to clone", cWarn)
+	}
+	if core.IsCloneURL(text) {
+		path := filepath.Join(core.ProjectsDir(), core.RepoName(text))
+		return m.makeProject(core.NewProjectRequest{Path: path, CloneURL: text})
+	}
+	path, err := filepath.Abs(expandHome(text))
 	if err != nil {
 		return m.say(err.Error(), cBad)
 	}
+	if m.mock {
+		return m.recordProject(store.Project{Name: filepath.Base(path), Path: path, DefaultBranch: "main"})
+	}
+	fi, serr := os.Stat(path)
+	if serr == nil && !fi.IsDir() {
+		return m.say(path+" is a file, not a folder", cBad)
+	}
+	if serr == nil {
+		if p, err := core.InspectRepo(path); err == nil {
+			return m.recordProject(p)
+		}
+	}
+	if err := core.CheckProjectName(filepath.Base(path)); err != nil {
+		return m.say(err.Error(), cBad)
+	}
+	c := &confirmBox{title: "Start a new project?", yes: "Create", safe: true,
+		body: "Makes " + tildePath(path) + " with a git repo on main and a first commit, so sandboxes have a branch to start from.",
+		fn:   func() tea.Cmd { return m.makeProject(core.NewProjectRequest{Path: path}) }}
+	if serr == nil {
+		c.title, c.yes = "Make "+filepath.Base(path)+" a project?", "Start repo"
+		c.body = "Starts a git repo on main in " + tildePath(path) + " and commits the files already in it, so sandboxes can see them."
+	}
+	if _, err := exec.LookPath("gh"); err == nil {
+		c.body += " Press g to also publish it to GitHub as a private repo."
+		c.altKey, c.alt = "g", "Create and publish"
+		c.altFn = func() tea.Cmd { return m.makeProject(core.NewProjectRequest{Path: path, Publish: true}) }
+	}
+	m.prompt = nil
+	m.confirm = c
+	return nil
+}
+
+func (m *Model) recordProject(p store.Project) tea.Cmd {
 	added, err := m.st.AddProject(p)
 	if errors.Is(err, store.ErrExists) {
 		return m.say(p.Path+" is already a project", cWarn)
@@ -1015,12 +1067,74 @@ func (m *Model) addProject(path string) tea.Cmd {
 	}
 	m.prompt = nil
 	m.reloadOrWarn()
+	m.selectProject(added.ID)
+	return tea.Batch(m.say("Added "+added.Name, cOk), m.listCmd())
+}
+
+func (m *Model) selectProject(id int64) {
 	for i, pp := range m.projects {
-		if pp.ID == added.ID {
+		if pp.ID == id {
 			m.setProject(i)
 		}
 	}
-	return tea.Batch(m.say("Added "+added.Name, cOk), m.listCmd())
+}
+
+type projectMsg struct {
+	p    *store.Project
+	name string
+	verb string
+	err  error
+}
+
+// makeProject runs NewProject's steps off the UI goroutine, showing each
+// one in the status line, then opens the New sandbox form on the project:
+// a project that has just been made has nothing in it to review yet.
+func (m *Model) makeProject(r core.NewProjectRequest) tea.Cmd {
+	p, steps, err := m.svc.NewProject(r)
+	if err != nil {
+		return m.say(err.Error(), cBad)
+	}
+	m.prompt = nil
+	m.making = steps[0].Busy
+	return m.projectStep(p, filepath.Base(r.Path), steps)
+}
+
+func (m *Model) projectStep(p *store.Project, name string, steps []core.Step) tea.Cmd {
+	st := steps[0]
+	return func() tea.Msg {
+		ctx, cancel := context.WithTimeout(context.Background(), opTimeout)
+		defer cancel()
+		out, err := st.Run(ctx)
+		if err == nil && st.Apply != nil {
+			st.Apply(out)
+		}
+		if err != nil || len(steps) == 1 {
+			return projectMsg{p: p, name: name, verb: st.Verb, err: err}
+		}
+		return projectNext{p: p, name: name, steps: steps[1:]}
+	}
+}
+
+type projectNext struct {
+	p     *store.Project
+	name  string
+	steps []core.Step
+}
+
+func (m *Model) onProject(msg projectMsg) tea.Cmd {
+	m.making = ""
+	m.reloadOrWarn()
+	if msg.p.ID != 0 {
+		m.selectProject(msg.p.ID)
+	}
+	if msg.err != nil {
+		return m.say(fmt.Sprintf("%s %s failed: %s", msg.verb, msg.name, msg.err), cBad)
+	}
+	cmd := m.openNew()
+	if m.modal != nil {
+		m.modal.f = fTask
+	}
+	return tea.Batch(cmd, m.say("Added "+msg.p.Name+". What should the first agent work on?", cOk), m.listCmd())
 }
 
 func (m *Model) askRemoveProject() tea.Cmd {
@@ -1049,42 +1163,9 @@ func expandHome(p string) string {
 	return p
 }
 
-func inspectRepo(path string, mock bool) (store.Project, error) {
-	if path == "" {
-		return store.Project{}, errors.New("enter the path to a git repository")
-	}
-	abs, err := filepath.Abs(path)
-	if err != nil {
-		return store.Project{}, err
-	}
-	if mock {
-		return store.Project{Name: filepath.Base(abs), Path: abs, DefaultBranch: "main"}, nil
-	}
-	root, err := gitOut(abs, "rev-parse", "--show-toplevel")
-	if err != nil {
-		return store.Project{}, fmt.Errorf("%s is not inside a git repository", abs)
-	}
-	p := store.Project{Name: filepath.Base(root), Path: root, DefaultBranch: "main"}
-	if u, err := gitOut(root, "remote", "get-url", "origin"); err == nil {
-		p.Remote = prettyRemote(u)
-	}
-	if h, err := gitOut(root, "symbolic-ref", "--short", "refs/remotes/origin/HEAD"); err == nil {
-		p.DefaultBranch = strings.TrimPrefix(h, "origin/")
-	}
-	return p, nil
-}
-
 func gitOut(dir string, args ...string) (string, error) {
 	out, err := exec.Command("git", append([]string{"-C", dir}, args...)...).Output()
 	return strings.TrimSpace(string(out)), err
-}
-
-func prettyRemote(u string) string {
-	u = strings.TrimSuffix(strings.TrimSpace(u), ".git")
-	u = strings.TrimPrefix(u, "https://")
-	u = strings.TrimPrefix(u, "ssh://")
-	u = strings.TrimPrefix(u, "git@")
-	return strings.Replace(u, ":", "/", 1)
 }
 
 // DefaultProjectPath is the git root of the working directory, if any.

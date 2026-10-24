@@ -346,6 +346,22 @@ kbd.hint {
   margin: 12px 0 14px;
 }
 
+.list-actions {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.new-project .label {
+  display: none;
+}
+
+@media (min-width: 700px) {
+  .new-project .label {
+    display: inline;
+  }
+}
+
 .list-head h1 {
   margin: 0;
   font: 700 28px/1.1 var(--display);
@@ -773,6 +789,11 @@ kbd.hint {
 .empty p {
   margin: 0;
   font-size: 14px;
+}
+
+.empty .empty-action {
+  display: flex;
+  margin: 18px auto 0;
 }
 
 /* Detail */

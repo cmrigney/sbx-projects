@@ -41,6 +41,9 @@ func ShellArgv() []string { return []string{"bash", "-l"} }
 //
 // The agent's reply at the end of each turn is also kept whole, in
 // last-turn.txt, for reading without attaching.
+//
+// A new session (a fresh start or /clear, not a resume or compaction)
+// clears both, so the activity shown is only the current conversation's.
 const hookScript = `#!/bin/bash
 D="$HOME/.sbx-projects"
 f="$D/events.jsonl"
@@ -48,6 +51,11 @@ in=$(cat)
 code=""
 kind=$(printf '%s' "$in" | jq -r '.hook_event_name + ":" + (.tool_name // "")' 2>/dev/null)
 case "$kind" in
+  SessionStart:*)
+    src=$(printf '%s' "$in" | jq -r '.source // empty' 2>/dev/null)
+    case "$src" in
+      startup|clear) : > "$f"; rm -f "$D/last-turn.txt" ;;
+    esac ;;
   Stop:*)
     msg=$(printf '%s' "$in" | jq -r '.last_assistant_message // empty' 2>/dev/null)
     if [ -n "$msg" ]; then

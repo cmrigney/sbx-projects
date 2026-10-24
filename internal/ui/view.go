@@ -700,7 +700,7 @@ func (m *Model) acts(it item) []keyHint {
 			a = append(a, keyHint{"U", "Unpublish port", m.openUnpublish})
 		}
 	}
-	if canPR(it) {
+	if m.canPR(it) {
 		a = append(a, keyHint{"p", "Open PR", m.openPR})
 	}
 	if canCheckout(it) {
@@ -719,7 +719,11 @@ func (m *Model) acts(it item) []keyHint {
 func (m *Model) hints() []keyHint {
 	switch {
 	case m.confirm != nil:
-		return []keyHint{{"y", m.confirm.yes, m.confirmYes}, {"esc", "Cancel", m.closeOverlay}}
+		h := []keyHint{{"y", m.confirm.yes, m.confirmYes}}
+		if m.confirm.altKey != "" {
+			h = append(h, keyHint{m.confirm.altKey, m.confirm.alt, m.confirmAlt})
+		}
+		return append(h, keyHint{"esc", "Cancel", m.closeOverlay})
 	case m.prompt != nil:
 		return []keyHint{{"enter", m.prompt.action, m.submitPrompt}, {"esc", "Cancel", m.closeOverlay}}
 	case m.help:
@@ -757,6 +761,9 @@ func (m *Model) hints() []keyHint {
 func (m *Model) msgLine() Line {
 	if m.listErr != "" && m.msg == "" {
 		return L(B("› ", cBad), S("Can't reach sbx: "+m.listErr, cBad))
+	}
+	if m.msg == "" && m.making != "" {
+		return L(S(string(spinner[m.spin%len(spinner)])+" ", cOk), S(m.making+"…", cFg))
 	}
 	if m.msg == "" {
 		return L()
@@ -951,7 +958,7 @@ func (m *Model) helpLines() []Line {
 		{"P  U", "Publish or unpublish a port (sbx ports)"},
 	})...)
 	out = append(out, sec("Projects", [][2]string{
-		{"A", "Add a project (a git repo)"}, {"D", "Forget the current project"}, {"m", "Layout: per feature or one for the repo"},
+		{"A", "Add a project: a repo, a URL to clone or a new folder"}, {"D", "Forget the current project"}, {"m", "Layout: per feature or one for the repo"},
 		{"K", "Default kits for new sandboxes"}, {"e", "Open the project in your editor"}, {"L", "Show the debug log"}, {"?  esc", "Show or hide this help"}, {"q", "Quit"},
 	})...)
 	out = append(out, L(B("Debug log", cFg)))

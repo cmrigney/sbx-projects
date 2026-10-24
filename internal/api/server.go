@@ -13,6 +13,7 @@ import (
 	"slices"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/cmrigney/sbx-projects/internal/agent"
@@ -31,6 +32,12 @@ type Server struct {
 	// two Macs with the same name.
 	ID   string
 	Name string
+	// ProjectsDir is where projects made from the apps go. Empty means
+	// ~/Projects.
+	ProjectsDir string
+
+	// making holds one new project at a time.
+	making sync.Mutex
 }
 
 func (s *Server) Handler() http.Handler {
@@ -44,6 +51,8 @@ func (s *Server) Handler() http.Handler {
 	auth := func(pattern string, h http.HandlerFunc) { mux.Handle(pattern, s.auth(h)) }
 	auth("GET /v1/events", s.events)
 	auth("GET /v1/projects", s.projects)
+	auth("POST /v1/projects", s.newProject)
+	auth("GET /v1/project-options", s.projectOptions)
 	auth("GET /v1/options", s.options)
 	auth("GET /v1/sandboxes", s.sandboxes)
 	auth("POST /v1/sandboxes", s.create)
@@ -336,8 +345,8 @@ func (s *Server) message(w http.ResponseWriter, r *http.Request) {
 
 func (s *Server) openPR(w http.ResponseWriter, r *http.Request) {
 	s.act(w, r, func(it item) ([]core.Step, string, error) {
-		if !core.CanPR(it.rec, it.probe) {
-			return nil, "", fail(http.StatusConflict, "%s has no commits to open a pull request with", it.rec.Name)
+		if why := core.PRBlocker(it.project, it.rec, it.probe); why != "" {
+			return nil, "", fail(http.StatusConflict, "%s", why)
 		}
 		prompt := core.PRPrompt(it.project.DefaultBranch)
 		return s.Monitor.svc.Send(it.rec, it.running(), it.agentUp, prompt), "Asked " + it.rec.Name + " to open a draft PR", nil
@@ -452,18 +461,28 @@ func (s *Server) create(w http.ResponseWriter, r *http.Request) {
 		writeErr(w, err)
 		return
 	}
-	m := s.Monitor
-	m.mu.Lock()
-	defer m.mu.Unlock()
-
-	i := slices.IndexFunc(m.projects, func(p store.Project) bool { return p.ID == req.ProjectID })
-	if i < 0 {
-		writeErr(w, fail(http.StatusNotFound, "There's no project with ID %d", req.ProjectID))
-		return
-	}
 	if err := checkCreate(&req); err != nil {
 		writeErr(w, err)
 		return
+	}
+	m := s.Monitor
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	v, err := s.startSandbox(req)
+	if err != nil {
+		writeErr(w, err)
+		return
+	}
+	writeJSON(w, http.StatusAccepted, v)
+}
+
+// startSandbox records a checked request's sandbox and starts making it.
+// Callers hold m.mu.
+func (s *Server) startSandbox(req CreateRequest) (SandboxView, error) {
+	m := s.Monitor
+	i := slices.IndexFunc(m.projects, func(p store.Project) bool { return p.ID == req.ProjectID })
+	if i < 0 {
+		return SandboxView{}, fail(http.StatusNotFound, "There's no project with ID %d", req.ProjectID)
 	}
 	p := &m.projects[i]
 	creq := core.CreateRequest{Agent: req.Agent, Source: req.Source, Value: req.Value, Task: req.Task, Clone: req.Clone,
@@ -475,12 +494,11 @@ func (s *Server) create(w http.ResponseWriter, r *http.Request) {
 	}
 	rec, steps, err := m.svc.Create(p, creq, taken)
 	if err != nil {
-		writeErr(w, fmt.Errorf("Could not save the sandbox: %w", err))
-		return
+		return SandboxView{}, fmt.Errorf("Could not save the sandbox: %w", err)
 	}
 	m.recs[rec.Name] = rec
 	m.run(rec.Name, steps, "Created "+rec.Name)
-	writeJSON(w, http.StatusAccepted, sandboxView(m.item(rec)))
+	return sandboxView(m.item(rec)), nil
 }
 
 // checkCreate validates the form and tidies it for core.Create.
