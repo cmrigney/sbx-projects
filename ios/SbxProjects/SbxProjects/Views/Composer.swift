@@ -70,7 +70,7 @@ struct Composer: View {
         }
         .fileImporter(isPresented: $choosingFiles, allowedContentTypes: [.item], allowsMultipleSelection: true) { result in
             switch result {
-            case .success(let urls): addFiles(urls)
+            case .success(let urls): Task { await addFiles(urls) }
             case .failure(let error): attachError = error.localizedDescription
             }
         }
@@ -144,8 +144,22 @@ struct Composer: View {
     }
 
     private func add(_ name: String, _ data: Data, _ mimeType: String) {
-        let unique = Attachment.uniqueName(name, among: files.map(\.name))
+        let unique = Attachment.uniqueName(Attachment.safeName(name), among: files.map(\.name))
         files.append(Attachment(name: unique, data: data, mimeType: mimeType))
+    }
+
+    /// Why another file of `bytes` can't go in this message, or nil when it
+    /// can. The Mac would refuse it, so it is better not to read it at all.
+    private func overLimit(adding bytes: Int, _ what: String) -> String? {
+        if files.count >= Attachment.maxFiles {
+            return "A message can carry at most \(Attachment.maxFiles) files."
+        }
+        let total = files.reduce(0) { $0 + $1.data.count } + bytes
+        if total > Attachment.maxBytes {
+            let limit = ByteCountFormatter.string(fromByteCount: Int64(Attachment.maxBytes), countStyle: .file)
+            return "\(what) would take this message over \(limit). Send it on its own or pick something smaller."
+        }
+        return nil
     }
 
     /// Photos arrive as JPEG, since agents can't read HEIC.
@@ -153,31 +167,56 @@ struct Composer: View {
         loading = true
         defer { loading = false }
         for item in items {
+            if let problem = overLimit(adding: 0, "A photo") {
+                attachError = problem
+                return
+            }
             guard let data = try? await item.loadTransferable(type: Data.self) else {
                 attachError = "A photo couldn't be loaded. If it's in iCloud, try again once it has downloaded."
                 continue
             }
             let isPNG = item.supportedContentTypes.contains(.png)
-            if isPNG {
-                add("photo.png", data, "image/png")
-            } else if let jpeg = UIImage(data: data)?.jpegData(compressionQuality: 0.85) {
-                add("photo.jpg", jpeg, "image/jpeg")
-            } else {
+            let photo: (String, Data, String)? = isPNG
+                ? ("photo.png", data, "image/png")
+                : UIImage(data: data)?.jpegData(compressionQuality: 0.85).map { ("photo.jpg", $0, "image/jpeg") }
+            guard let photo else {
                 attachError = "A photo isn't in a format that can be sent."
+                continue
             }
+            if let problem = overLimit(adding: photo.1.count, "A photo") {
+                attachError = problem
+                return
+            }
+            add(photo.0, photo.1, photo.2)
         }
     }
 
-    private func addFiles(_ urls: [URL]) {
+    /// Checks each file's size before reading it, and reads it off the main
+    /// thread, so a large video or archive is refused without loading it.
+    private func addFiles(_ urls: [URL]) async {
+        loading = true
+        defer { loading = false }
         for url in urls {
+            let name = url.lastPathComponent
             let scoped = url.startAccessingSecurityScopedResource()
             defer { if scoped { url.stopAccessingSecurityScopedResource() } }
+            // A file not downloaded from iCloud yet may not know its size;
+            // it is checked again once read.
+            let size = (try? url.resourceValues(forKeys: [.fileSizeKey]).fileSize) ?? 0
+            if let problem = overLimit(adding: size, name) {
+                attachError = problem
+                return
+            }
             do {
-                let data = try Data(contentsOf: url)
+                let data = try await Task.detached { try Data(contentsOf: url, options: .mappedIfSafe) }.value
+                if let problem = overLimit(adding: data.count, name) {
+                    attachError = problem
+                    return
+                }
                 let type = UTType(filenameExtension: url.pathExtension)?.preferredMIMEType ?? "application/octet-stream"
-                add(url.lastPathComponent, data, type)
+                add(name, data, type)
             } catch {
-                attachError = "\(url.lastPathComponent) couldn't be read: \(error.localizedDescription)"
+                attachError = "\(name) couldn't be read: \(error.localizedDescription)"
             }
         }
     }

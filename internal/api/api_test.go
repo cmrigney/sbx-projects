@@ -11,6 +11,7 @@ import (
 	"mime/multipart"
 	"net/http"
 	"net/http/httptest"
+	"os"
 	"path"
 	"path/filepath"
 	"slices"
@@ -484,6 +485,10 @@ func TestMessageWithFiles(t *testing.T) {
 		t.Errorf("names = %s", got)
 	}
 
+	if st := f.postFiles(t, "claude-a", strings.Repeat("x", maxText+1), nil); st != http.StatusRequestEntityTooLarge {
+		t.Errorf("text over the limit = %d, want 413", st)
+	}
+
 	big := maxUpload
 	maxUpload = 10
 	defer func() { maxUpload = big }()
@@ -492,18 +497,41 @@ func TestMessageWithFiles(t *testing.T) {
 	}
 }
 
-func TestSafeName(t *testing.T) {
-	for in, want := range map[string]string{
-		"report.pdf":          "report.pdf",
-		`C:\Users\me\a b.txt`: "a_b.txt",
-		"../../x":             "x",
-		".env":                "env",
-		"":                    "file",
-		"$(rm -rf).sh":        "__rm_-rf_.sh",
-		"résumé.pdf":          "résumé.pdf",
-	} {
-		if got := safeName(in); got != want {
-			t.Errorf("safeName(%q) = %q, want %q", in, got, want)
+// TestNames runs the cases the web and iPhone apps' copies of safeName
+// and uniqueName are tested against too.
+func TestNames(t *testing.T) {
+	b, err := os.ReadFile("testdata/names.json")
+	if err != nil {
+		t.Fatal(err)
+	}
+	var cases struct {
+		Safe   [][2]string
+		Unique []struct{ Names, Want []string }
+	}
+	if err := json.Unmarshal(b, &cases); err != nil {
+		t.Fatal(err)
+	}
+	for _, c := range cases.Safe {
+		got := safeName(c[0])
+		if got != c[1] {
+			t.Errorf("safeName(%q) = %q, want %q", c[0], got, c[1])
+		}
+		if again := safeName(got); again != got {
+			t.Errorf("safeName(%q) = %q, want it unchanged", got, again)
+		}
+	}
+	for _, c := range cases.Unique {
+		taken := map[string]bool{}
+		var got []string
+		for _, n := range c.Names {
+			name := uniqueName(safeName(n), taken)
+			if again := safeName(name); again != name {
+				t.Errorf("safeName(%q) = %q, want a numbered name unchanged", name, again)
+			}
+			got = append(got, name)
+		}
+		if !slices.Equal(got, c.Want) {
+			t.Errorf("names for %q = %q, want %q", c.Names, got, c.Want)
 		}
 	}
 }

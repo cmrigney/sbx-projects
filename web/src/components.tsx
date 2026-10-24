@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState, useSyncExternalStore, type ReactNode } from "react";
 import { groupLabel, groupOf, type FeedKind, type Sandbox, type SandboxState } from "./api";
+import { safeName, uniqueName } from "./names";
 import { useApp } from "./store";
 
 // Routes live in the hash, so the browser's back button closes sheets and
@@ -339,7 +340,7 @@ export function Sheet({
  * files are copied into the sandbox and the message names their paths.
  */
 export function Composer({ sandbox, placeholder, onSent }: { sandbox: Sandbox; placeholder?: string; onSent?: () => void }) {
-  const { act } = useApp();
+  const { act, fail } = useApp();
   const [text, setText] = useState("");
   const [files, setFiles] = useState<File[]>([]);
   const [sending, setSending] = useState(false);
@@ -357,7 +358,11 @@ export function Composer({ sandbox, placeholder, onSent }: { sandbox: Sandbox; p
   }, [text]);
 
   const attach = (list: FileList | File[] | null) => {
-    if (list && list.length) setFiles((fs) => withUniqueNames(fs, Array.from(list)));
+    if (!list || !list.length) return;
+    const next = withUniqueNames(files, Array.from(list));
+    const problem = attachProblem(next);
+    if (problem) fail(problem);
+    else setFiles(next);
   };
 
   // Puts the file's name where the cursor is, so the message can say which
@@ -470,21 +475,29 @@ export function Composer({ sandbox, placeholder, onSent }: { sandbox: Sandbox; p
 }
 
 /**
- * Adds files, numbering any whose name is already attached, so a mention
- * names one file. Pasted screenshots are all called image.png.
+ * Adds files under the names the Mac will give them in the sandbox, so a
+ * mention names one file there. Pasted screenshots are all called
+ * image.png, so they are numbered.
  */
 export function withUniqueNames(have: File[], add: File[]): File[] {
   const taken = new Set(have.map((f) => f.name));
   const out = [...have];
   for (const f of add) {
-    let name = f.name || "file";
-    const dot = name.lastIndexOf(".");
-    const [base, ext] = dot > 0 ? [name.slice(0, dot), name.slice(dot)] : [name, ""];
-    for (let i = 2; taken.has(name); i++) name = `${base}-${i}${ext}`;
-    taken.add(name);
+    const name = uniqueName(safeName(f.name), taken);
     out.push(name === f.name ? f : new File([f], name, { type: f.type, lastModified: f.lastModified }));
   }
   return out;
+}
+
+/** The API's limits on one message's files (maxUploadFiles and maxUpload). */
+export const maxFiles = 20;
+export const maxFileBytes = 100 * 1024 * 1024;
+
+/** Why the files can't all go in one message, or null when they can. */
+export function attachProblem(files: File[]): string | null {
+  if (files.length > maxFiles) return `Attach at most ${maxFiles} files to a message.`;
+  if (files.reduce((n, f) => n + f.size, 0) > maxFileBytes) return `Attach up to ${maxFileBytes / 1024 / 1024} MB at a time.`;
+  return null;
 }
 
 export function fileSize(n: number) {

@@ -279,17 +279,73 @@ nonisolated struct Attachment: Identifiable, Sendable {
     var data: Data
     var mimeType: String
 
-    /// Numbers a name already in `taken`, so a mention names one file.
+    /// The API's limits on one message's files (maxUploadFiles and
+    /// maxUpload in internal/api/upload.go).
+    static let maxFiles = 20
+    static let maxBytes = 100 * 1024 * 1024
+
+    // The names below are the API's safeName and uniqueName, so the name a
+    // message mentions is the one the Mac copies the file to. They work on
+    // Unicode scalars, as Go works on code points; Swift's characters
+    // would merge some of them and compare canonical equivalents as equal.
+    // The cases in internal/api/testdata/names.json keep the copies in step.
+
+    /// The longest name, in code points, a file is given.
+    private static let maxName = 120
+
+    /// Keeps the last element of the name and replaces anything a shell or
+    /// the agent's prompt could trip on. A name it returns comes back
+    /// unchanged.
+    static func safeName(_ name: String) -> String {
+        var u = Array(name.unicodeScalars)
+        if let slash = u.lastIndex(where: { $0 == "/" || $0 == "\\" }) {
+            u = Array(u[(slash + 1)...])
+        }
+        u = u.map { kept($0) ? $0 : "_" }
+        u = Array(u.drop(while: { $0 == "." }))
+        if u.count > maxName {
+            var e = ext(u)
+            if e.count > 20 { e = [] }
+            u = Array(u.prefix(maxName - e.count)) + e
+        }
+        return u.allSatisfy({ $0 == "_" }) ? "file" : string(u)
+    }
+
+    /// Numbers a name already in `taken`, shortening it to keep within
+    /// maxName, so a mention names one file.
     static func uniqueName(_ name: String, among taken: [String]) -> String {
-        let name = name.isEmpty ? "file" : name
-        let ext = (name as NSString).pathExtension
-        let base = ext.isEmpty ? name : String(name.dropLast(ext.count + 1))
+        let u = Array(name.unicodeScalars)
+        let e = ext(u)
+        let base = Array(u.dropLast(e.count))
         var out = name
         var i = 2
-        while taken.contains(out) {
-            out = ext.isEmpty ? "\(base)-\(i)" : "\(base)-\(i).\(ext)"
+        while taken.contains(where: { $0.unicodeScalars.elementsEqual(out.unicodeScalars) }) {
+            let suffix = Array("-\(i)".unicodeScalars) + e
+            out = string(Array(base.prefix(max(maxName - suffix.count, 0))) + suffix)
             i += 1
         }
         return out
+    }
+
+    private static func kept(_ u: Unicode.Scalar) -> Bool {
+        if u == "." || u == "-" || u == "_" { return true }
+        switch u.properties.generalCategory {
+        case .uppercaseLetter, .lowercaseLetter, .titlecaseLetter, .modifierLetter, .otherLetter, .decimalNumber:
+            return true
+        default:
+            return false
+        }
+    }
+
+    /// The last "." and what follows it, as Go's path.Ext gives it.
+    private static func ext(_ u: [Unicode.Scalar]) -> [Unicode.Scalar] {
+        guard let dot = u.lastIndex(of: ".") else { return [] }
+        return Array(u[dot...])
+    }
+
+    private static func string(_ u: [Unicode.Scalar]) -> String {
+        var view = String.UnicodeScalarView()
+        view.append(contentsOf: u)
+        return String(view)
     }
 }

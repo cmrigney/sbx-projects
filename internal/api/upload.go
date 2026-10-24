@@ -22,6 +22,9 @@ import (
 // tests need not send that much.
 var maxUpload int64 = 100 << 20
 
+// maxText caps a message's text, as readJSON caps a JSON message.
+const maxText = 1 << 20
+
 // maxUploadFiles caps how many files one message can carry.
 const maxUploadFiles = 20
 
@@ -38,8 +41,8 @@ type upload struct {
 // "file" parts. Files are written to a new directory as they arrive, so a
 // large one is never held in memory.
 func readUpload(w http.ResponseWriter, r *http.Request) (*upload, error) {
-	// The text and the form's framing get a megabyte beyond the files.
-	r.Body = http.MaxBytesReader(w, r.Body, maxUpload+1<<20)
+	// The text and the form's framing get room beyond the files.
+	r.Body = http.MaxBytesReader(w, r.Body, maxUpload+maxText+64<<10)
 	reader, err := r.MultipartReader()
 	if err != nil {
 		return nil, fail(http.StatusBadRequest, "The request isn't a valid form: %s", err)
@@ -61,10 +64,14 @@ func readUpload(w http.ResponseWriter, r *http.Request) (*upload, error) {
 		}
 		switch part.FormName() {
 		case "text":
-			b, err := io.ReadAll(io.LimitReader(part, 1<<20))
+			b, err := io.ReadAll(io.LimitReader(part, maxText+1))
 			if err != nil {
 				up.remove()
 				return nil, uploadErr(err)
+			}
+			if len(b) > maxText {
+				up.remove()
+				return nil, fail(http.StatusRequestEntityTooLarge, "The message is too long. Keep it under %d KB", maxText>>10)
 			}
 			up.text = string(b)
 		case "file":
@@ -136,27 +143,37 @@ func uploadID() string {
 	return time.Now().Format("20060102-150405") + "-" + hex.EncodeToString(b)
 }
 
+// The web and iPhone apps name files with the same rules as safeName and
+// uniqueName before they show them, so the name a message mentions is the
+// one the file has in the sandbox. Keep web/src/names.ts and the iPhone
+// app's Attachment in step; testdata/names.json holds the cases all three
+// are tested against.
+
+// maxName is the longest name, in code points, a file is given.
+const maxName = 120
+
 // safeName keeps the last element of what the client called the file and
 // replaces anything a shell or the agent's prompt could trip on, so the
-// path can be read back out of the message as it is.
+// path can be read back out of the message as it is. A name it returns
+// comes back from it unchanged.
 func safeName(name string) string {
 	name = name[strings.LastIndexAny(name, `/\`)+1:]
 	name = strings.Map(func(r rune) rune {
 		switch {
 		case r == '.' || r == '-' || r == '_':
 			return r
-		case unicode.IsLetter(r) || unicode.IsDigit(r):
+		case unicode.IsLetter(r) || unicode.Is(unicode.Nd, r):
 			return r
 		}
 		return '_'
 	}, name)
 	name = strings.TrimLeft(name, ".")
-	if r := []rune(name); len(r) > 120 {
+	if r := []rune(name); len(r) > maxName {
 		ext := []rune(path.Ext(name))
 		if len(ext) > 20 {
 			ext = nil
 		}
-		name = string(r[:120-len(ext)]) + string(ext)
+		name = string(r[:maxName-len(ext)]) + string(ext)
 	}
 	if strings.Trim(name, "_") == "" {
 		return "file"
@@ -164,13 +181,19 @@ func safeName(name string) string {
 	return name
 }
 
-// uniqueName numbers a name already used by an earlier file in the message.
+// uniqueName numbers a name already used by an earlier file in the
+// message, shortening it to keep within maxName.
 func uniqueName(name string, taken map[string]bool) string {
 	ext := path.Ext(name)
-	base := strings.TrimSuffix(name, ext)
+	base := []rune(strings.TrimSuffix(name, ext))
 	out := name
 	for i := 2; taken[out]; i++ {
-		out = fmt.Sprintf("%s-%d%s", base, i, ext)
+		suffix := fmt.Sprintf("-%d%s", i, ext)
+		b := base
+		if keep := maxName - len([]rune(suffix)); len(b) > keep {
+			b = b[:max(keep, 0)]
+		}
+		out = string(b) + suffix
 	}
 	taken[out] = true
 	return out

@@ -2,7 +2,9 @@
 import { act, useState } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
-import { Sheet, withUniqueNames } from "./components";
+import { Sheet, attachProblem, maxFileBytes, maxFiles, withUniqueNames } from "./components";
+import { safeName, uniqueName } from "./names";
+import names from "../../internal/api/testdata/names.json";
 import { AppProvider, useApp } from "./store";
 import { Client, type Sandbox, type ServerEvent } from "./api";
 
@@ -85,10 +87,22 @@ for (const method of ["act", "create", "markSeen"] as const) {
   }
 }
 
-it("numbers attached files that share a name, so a mention names one", () => {
-  const png = (name: string) => new File(["x"], name, { type: "image/png" });
-  const names = withUniqueNames([png("image.png")], [png("image.png"), png("image.png"), png("notes")]).map((f) => f.name);
-  expect(names).toEqual(["image.png", "image-2.png", "image-3.png", "notes"]);
+it("names attached files as the Mac will in the sandbox", () => {
+  for (const [name, want] of names.safe) expect(safeName(name)).toBe(want);
+  for (const c of names.unique) {
+    const taken = new Set<string>();
+    expect(c.names.map((n) => uniqueName(safeName(n), taken))).toEqual(c.want);
+  }
+  const file = (name: string) => new File(["x"], name, { type: "image/png" });
+  const named = withUniqueNames([file("image.png")], [file("image.png"), file("a b.txt"), file("a_b.txt")]).map((f) => f.name);
+  expect(named).toEqual(["image.png", "image-2.png", "a_b.txt", "a_b-2.txt"]);
+});
+
+it("refuses more files than the Mac takes in one message", () => {
+  const big = new File([new Uint8Array(maxFileBytes + 1)], "big.bin");
+  expect(attachProblem([big])).toMatch(/MB/);
+  expect(attachProblem(Array.from({ length: maxFiles + 1 }, (_, i) => new File(["x"], `${i}`)))).toMatch(/at most/);
+  expect(attachProblem([new File(["x"], "ok")])).toBeNull();
 });
 
 it("sends attached files as a form and plain messages as JSON", async () => {
