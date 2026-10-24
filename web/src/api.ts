@@ -255,13 +255,15 @@ export class Client {
   projectOptions = () => this.call<ProjectOptions>("GET", "/v1/project-options");
 
   /**
-   * Opens the agent's terminal. Browsers can't send headers on a WebSocket,
-   * so the token goes as a second subprotocol. Output arrives as binary
-   * frames; send keystrokes as binary frames and resizes as JSON text.
+   * Opens the agent's terminal, or with shell a shell in the sandbox.
+   * Browsers can't send headers on a WebSocket, so the token goes as a
+   * second subprotocol. Output arrives as binary frames; send keystrokes as
+   * binary frames and resizes as JSON text.
    */
-  terminal(name: string, cols: number, rows: number): WebSocket {
+  terminal(name: string, cols: number, rows: number, shell = false): WebSocket {
     const scheme = location.protocol === "https:" ? "wss" : "ws";
-    const url = `${scheme}://${location.host}/v1/sandboxes/${enc(name)}/terminal?cols=${cols}&rows=${rows}`;
+    let url = `${scheme}://${location.host}/v1/sandboxes/${enc(name)}/terminal?cols=${cols}&rows=${rows}`;
+    if (shell) url += "&shell=1";
     const ws = new WebSocket(url, [terminalProtocol, `bearer.${this.token}`]);
     ws.binaryType = "arraybuffer";
     return ws;

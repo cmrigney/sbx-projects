@@ -6,8 +6,8 @@ import { useApp } from "./store";
 // Routes live in the hash, so the browser's back button closes sheets and
 // leaves a sandbox as the iPhone's back gesture does.
 
-/** What opens over a sandbox. The terminal covers the whole app. */
-export type Sheet = "reply" | "diff" | "remove" | "terminal";
+/** What opens over a sandbox. The terminal and shell cover the whole app. */
+export type Sheet = "reply" | "diff" | "remove" | "terminal" | "shell";
 
 export type Route =
   | { page: "list" }

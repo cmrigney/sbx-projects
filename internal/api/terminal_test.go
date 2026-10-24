@@ -17,9 +17,14 @@ import (
 // subprotocol.
 func (f *fixture) attach(t *testing.T, name string) (*websocket.Conn, *http.Response, error) {
 	t.Helper()
+	return f.dialTerminal(t, name, "")
+}
+
+func (f *fixture) dialTerminal(t *testing.T, name, query string) (*websocket.Conn, *http.Response, error) {
+	t.Helper()
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	t.Cleanup(cancel)
-	url := "wss" + strings.TrimPrefix(f.srv.URL, "https") + "/v1/sandboxes/" + name + "/terminal?cols=100&rows=30"
+	url := "wss" + strings.TrimPrefix(f.srv.URL, "https") + "/v1/sandboxes/" + name + "/terminal?cols=100&rows=30" + query
 	return websocket.Dial(ctx, url, &websocket.DialOptions{
 		HTTPClient:   f.srv.Client(),
 		Subprotocols: []string{TerminalProtocol, bearerProtocol + f.token},
@@ -82,6 +87,36 @@ func TestTerminalResumesAStoppedSandboxFirst(t *testing.T) {
 		t.Fatalf("output = %q", out)
 	}
 	f.waitFor(t, func(m map[string]SandboxView) bool { return m["claude-a"].Running })
+}
+
+func TestTerminalOpensAShellWithoutTheAgent(t *testing.T) {
+	f := newFixture(t, []sbx.MockSeed{{Name: "claude-a", Agent: "claude", Workspace: "/src/repo", Running: true}})
+	f.waitFor(t, func(m map[string]SandboxView) bool { return m["claude-a"].Running })
+	c, _, err := f.dialTerminal(t, "claude-a", "&shell=1")
+	if err != nil {
+		t.Fatal(err)
+	}
+	out := readUntil(t, c, "sbx exec -it claude-a bash -l")
+	if strings.Contains(out, "Starting the agent") {
+		t.Fatalf("a shell started the agent: %q", out)
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+	if err := c.Write(ctx, websocket.MessageBinary, []byte("\r")); err != nil {
+		t.Fatal(err)
+	}
+	for {
+		if _, _, err = c.Read(ctx); err != nil {
+			break
+		}
+	}
+	var ce websocket.CloseError
+	if !errors.As(err, &ce) || ce.Code != websocket.StatusNormalClosure || ce.Reason != "The shell exited" {
+		t.Fatalf("closed with %v", err)
+	}
+	if v := f.waitFor(t, func(map[string]SandboxView) bool { return true })["claude-a"]; v.AgentUp {
+		t.Fatal("the agent was started")
+	}
 }
 
 func TestTerminalRefusals(t *testing.T) {

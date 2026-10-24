@@ -311,8 +311,8 @@ final class AppModel {
         try await api().projectOptions()
     }
 
-    func terminal(_ name: String, cols: Int, rows: Int) throws -> URLSessionWebSocketTask {
-        try api().terminal(name, cols: cols, rows: rows)
+    func terminal(_ name: String, cols: Int, rows: Int, shell: Bool = false) throws -> URLSessionWebSocketTask {
+        try api().terminal(name, cols: cols, rows: rows, shell: shell)
     }
 
     func markSeen(_ name: String) async {

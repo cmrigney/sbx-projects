@@ -163,11 +163,12 @@ nonisolated final class APIClient: Sendable {
         try await perform(request("GET", "/v1/project-options"))
     }
 
-    /// Opens the agent's terminal, as Enter attaches to it in the TUI.
+    /// Opens the agent's terminal, as Enter attaches to it in the TUI, or
+    /// with `shell` a shell in the sandbox, as $ opens one.
     /// Output arrives as binary frames; send keystrokes as binary frames and
     /// resizes as JSON text. The session's delegate pins the certificate.
-    func terminal(_ name: String, cols: Int, rows: Int) -> URLSessionWebSocketTask {
-        var req = request("GET", "/v1/sandboxes/\(escape(name))/terminal?cols=\(cols)&rows=\(rows)")
+    func terminal(_ name: String, cols: Int, rows: Int, shell: Bool = false) -> URLSessionWebSocketTask {
+        var req = request("GET", "/v1/sandboxes/\(escape(name))/terminal?cols=\(cols)&rows=\(rows)\(shell ? "&shell=1" : "")")
         req.setValue(Self.terminalProtocol, forHTTPHeaderField: "Sec-WebSocket-Protocol")
         // An idle terminal is quiet for as long as the agent is; the pings
         // both ways are what keep it open.

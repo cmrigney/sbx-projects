@@ -184,6 +184,7 @@ From the app you can:
 - Read an agent's activity, changed files and commits, and the full diff file by file.
 - Send the agent a message, or reply to its last answer. The paperclip attaches photos or files; tap one to mention it in the message.
 - Attach to the agent's terminal, as `Enter` does in the TUI, with a key bar for Ctrl, Esc, Tab and the arrows. **Detach** or **Ctrl+B, then d** returns to the sandbox; the agent keeps running.
+- Long-press **Attach** and choose **Open a shell** to get a shell in the sandbox, as `$` does in the TUI. `exit` or **Close** ends it.
 - Open a draft pull request, check out the branch on your Mac, and stop, resume or remove a sandbox.
 - Create a sandbox with the same choices as the New sandbox form.
 - Start a project: an empty repo or a clone of a URL, made in your projects folder on the Mac (see [`--projects-dir`](#the-api)). Give it a first instruction and an agent starts on it right away; otherwise the New sandbox form opens on the new project. A new empty repo can also be published to GitHub as a private repo, which is off unless you turn it on.
@@ -203,7 +204,7 @@ The same server also serves a web app that does everything the iPhone app does, 
 
 Messages in the web app can carry files too: choose them with the paperclip, paste a screenshot, or drop files on the message box. Click a file to put its name in the message.
 
-The web app can also **attach** to an agent, as `Enter` does in the TUI: **Attach** on a sandbox (or `Enter` on a keyboard) opens its terminal in the page, resuming the sandbox or starting the agent first when needed. On a phone, a key bar adds Ctrl, Esc, Tab and the arrows. **Detach** or **Ctrl+B, then d** returns to the sandbox; the agent keeps running.
+The web app can also **attach** to an agent, as `Enter` does in the TUI: **Attach** on a sandbox (or `Enter` on a keyboard) opens its terminal in the page, resuming the sandbox or starting the agent first when needed. On a phone, a key bar adds Ctrl, Esc, Tab and the arrows. **Detach** or **Ctrl+B, then d** returns to the sandbox; the agent keeps running. Long-press **Attach** (or right-click it, or press `$`) and choose **Open a shell** to get a shell in the sandbox instead, as `$` does in the TUI.
 
 It has the same look as the iPhone app, taken from the app icon: navy and mint, with a terminal's type for branches, times and logs, in dark or light to match your system. On a phone it shows one screen at a time:
 

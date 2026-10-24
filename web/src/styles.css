@@ -2153,6 +2153,10 @@ section:first-child > .diff-file {
 
 .attach-btn {
   text-decoration: none;
+  /* A long press offers a shell, not the browser's link preview. */
+  -webkit-touch-callout: none;
+  -webkit-user-select: none;
+  user-select: none;
 }
 
 .attach-btn.disabled {
@@ -2211,6 +2215,14 @@ section:first-child > .diff-file {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+.term-kind {
+  padding: 2px 6px;
+  border-radius: 4px;
+  background: rgba(133, 232, 205, 0.14);
+  color: #85e8cd;
+  font-size: 11px;
 }
 
 .term-dot {

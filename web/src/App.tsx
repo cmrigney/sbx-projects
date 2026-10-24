@@ -61,9 +61,9 @@ export function App() {
       {route.page === "sandbox" && open && route.sheet === "reply" && <ReplySheet sandbox={open} />}
       {route.page === "sandbox" && open && route.sheet === "diff" && <DiffSheet sandbox={open} file={route.file} />}
       {route.page === "sandbox" && open && route.sheet === "remove" && <RemoveSheet sandbox={open} />}
-      {route.page === "sandbox" && open && route.sheet === "terminal" && (
+      {route.page === "sandbox" && open && (route.sheet === "terminal" || route.sheet === "shell") && (
         <Suspense fallback={<div className="term-page" />}>
-          <TerminalView sandbox={open} />
+          <TerminalView key={route.sheet} sandbox={open} shell={route.sheet === "shell"} />
         </Suspense>
       )}
       <Toasts />

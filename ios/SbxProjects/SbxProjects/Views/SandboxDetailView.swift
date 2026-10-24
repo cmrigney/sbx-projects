@@ -12,7 +12,7 @@ struct SandboxDetailView: View {
     @State private var showReply = false
     @State private var diffPath: DiffTarget?
     @State private var confirmRemove = false
-    @State private var attached = false
+    @State private var attached: TerminalKind?
     @FocusState private var composing: Bool
 
     enum Tab: String, CaseIterable {
@@ -44,7 +44,7 @@ struct SandboxDetailView: View {
             if let sandbox { ReplySheet(sandbox: sandbox) }
         }
         .sheet(item: $diffPath) { DiffView(name: name, jumpTo: $0.path) }
-        .fullScreenCover(isPresented: $attached) { TerminalScreen(name: name) }
+        .fullScreenCover(item: $attached) { TerminalScreen(name: name, shell: $0 == .shell) }
     }
 
     private func load() async {
@@ -85,8 +85,16 @@ struct SandboxDetailView: View {
         .safeAreaInset(edge: .bottom) { Composer(sandbox: s, focused: $composing) }
         .toolbar {
             ToolbarItemGroup(placement: .topBarTrailing) {
-                Button { attached = true } label: { Label("Attach", systemImage: "apple.terminal") }
-                    .disabled(s.busy)
+                // A tap attaches; a long press offers a shell too.
+                Menu {
+                    Button { attached = .agent } label: { Label("Attach to the agent", systemImage: "apple.terminal") }
+                    Button { attached = .shell } label: { Label("Open a shell", systemImage: "terminal") }
+                } label: {
+                    Label("Attach", systemImage: "apple.terminal")
+                } primaryAction: {
+                    attached = .agent
+                }
+                .disabled(s.busy)
                 actions(s)
             }
         }
@@ -160,6 +168,12 @@ struct SandboxDetailView: View {
         if s.running { m += " The sandbox is stopped first." }
         return m
     }
+}
+
+/// What Attach opens: the agent's session, or a shell beside it.
+enum TerminalKind: Identifiable {
+    case agent, shell
+    var id: Self { self }
 }
 
 struct DiffTarget: Identifiable {

@@ -47,6 +47,7 @@ export function SandboxDetail({ name, wide }: { name: string; wide: boolean }) {
       "2": () => setTab("changes"),
       "3": () => setTab("setup"),
       Enter: run(true, () => go({ page: "sandbox", name, sheet: "terminal" })),
+      $: run(true, () => go({ page: "sandbox", name, sheet: "shell" })),
       i: () => document.getElementById("composer")?.focus(),
       t: run(s?.hasReply, () => go({ page: "sandbox", name, sheet: "reply" })),
       p: run(s?.canPR, () => act(name, (c) => c.openPR(name))),
@@ -72,16 +73,7 @@ export function SandboxDetail({ name, wide }: { name: string; wide: boolean }) {
         )}
         {s && (
           <div className="bar-actions">
-            <a
-              className={`btn small attach-btn ${s.busy ? "disabled" : ""}`}
-              href={href({ page: "sandbox", name, sheet: "terminal" })}
-              aria-disabled={s.busy}
-              title="Attach to the agent's terminal"
-            >
-              <Icon name="terminal" size={16} />
-              Attach
-              <kbd className="hint">enter</kbd>
-            </a>
+            <AttachButton s={s} />
             <Actions s={s} />
           </div>
         )}
@@ -170,6 +162,95 @@ function Header({ s }: { s: Sandbox }) {
   );
 }
 
+// How long a press on Attach lasts before it offers a shell instead.
+const longPressMs = 450;
+
+/**
+ * Attaches to the agent. A long press, or a right click, offers a shell in
+ * the sandbox too, as $ opens one in the TUI.
+ */
+function AttachButton({ s }: { s: Sandbox }) {
+  const [open, setOpen] = useState(false);
+  const ref = useRef<HTMLDivElement>(null);
+  const timer = useRef<number>(undefined);
+  // The click that ends a long press shouldn't also attach.
+  const pressed = useRef(false);
+
+  useEffect(() => {
+    if (!open) return;
+    const close = (e: Event) => !ref.current?.contains(e.target as Node) && setOpen(false);
+    const key = (e: KeyboardEvent) => e.key === "Escape" && setOpen(false);
+    document.addEventListener("pointerdown", close);
+    document.addEventListener("keydown", key);
+    return () => {
+      document.removeEventListener("pointerdown", close);
+      document.removeEventListener("keydown", key);
+    };
+  }, [open]);
+
+  useEffect(() => () => clearTimeout(timer.current), []);
+
+  const cancel = () => clearTimeout(timer.current);
+  const pick = (sheet: "terminal" | "shell") => {
+    setOpen(false);
+    go({ page: "sandbox", name: s.name, sheet });
+  };
+
+  return (
+    <div className="menu-wrap" ref={ref}>
+      <a
+        className={`btn small attach-btn ${s.busy ? "disabled" : ""}`}
+        href={href({ page: "sandbox", name: s.name, sheet: "terminal" })}
+        aria-disabled={s.busy}
+        aria-haspopup="menu"
+        aria-expanded={open}
+        title="Attach to the agent's terminal. Long press for a shell"
+        onPointerDown={(e) => {
+          if (e.button !== 0) return;
+          pressed.current = false;
+          cancel();
+          timer.current = window.setTimeout(() => {
+            pressed.current = true;
+            setOpen(true);
+          }, longPressMs);
+        }}
+        onPointerUp={cancel}
+        onPointerLeave={cancel}
+        onPointerCancel={cancel}
+        onClick={(e) => {
+          if (pressed.current) {
+            e.preventDefault();
+            pressed.current = false;
+          }
+        }}
+        onContextMenu={(e) => {
+          e.preventDefault();
+          cancel();
+          setOpen(true);
+        }}
+      >
+        <Icon name="terminal" size={16} />
+        Attach
+        <kbd className="hint">enter</kbd>
+      </a>
+      {open && (
+        <div className="menu" role="menu">
+          <button role="menuitem" onClick={() => pick("terminal")}>
+            <Icon name="terminal" size={17} />
+            <span>Attach to the agent</span>
+            <kbd className="hint">enter</kbd>
+          </button>
+          <button role="menuitem" onClick={() => pick("shell")}>
+            <Icon name="prompt" size={17} />
+            <span>Open a shell</span>
+            <kbd className="hint">$</kbd>
+          </button>
+        </div>
+      )}
+    </div>
+  );
+}
+
 /** The TUI's sandbox actions, behind the ⋯ button. */
 function Actions({ s }: { s: Sandbox }) {
   const { act } = useApp();
@@ -212,6 +293,7 @@ function Actions({ s }: { s: Sandbox }) {
       {open && (
         <div className="menu" role="menu">
           {item("Attach", "terminal", "enter", () => go({ page: "sandbox", name: s.name, sheet: "terminal" }))}
+          {item("Shell", "prompt", "$", () => go({ page: "sandbox", name: s.name, sheet: "shell" }))}
           {item("Last reply", "bubble", "t", () => go({ page: "sandbox", name: s.name, sheet: "reply" }), !s.hasReply)}
           {item("Open draft PR", "pr", "p", () => act(s.name, (c) => c.openPR(s.name)), !s.canPR)}
           {item("Check out on Mac", "laptop", "c", () => act(s.name, (c) => c.checkout(s.name)), !s.canCheckout)}

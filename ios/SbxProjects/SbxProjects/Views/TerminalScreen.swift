@@ -3,9 +3,11 @@ import SwiftUI
 import UIKit
 
 /// The agent's session, as Enter attaches to it in the TUI. Leaving
-/// detaches; the agent keeps running.
+/// detaches; the agent keeps running. With `shell`, a shell in the sandbox
+/// instead, as $ opens one.
 struct TerminalScreen: View {
     let name: String
+    var shell = false
 
     @Environment(AppModel.self) private var app
     @Environment(\.dismiss) private var dismiss
@@ -20,7 +22,7 @@ struct TerminalScreen: View {
             bar
             ZStack {
                 TerminalHost(session: session) { view in
-                    session.attach(view) { try app.terminal(name, cols: $0, rows: $1) }
+                    session.attach(view) { try app.terminal(name, cols: $0, rows: $1, shell: shell) }
                 }
                 if case .closed(let message, let again) = session.phase {
                     closed(message, again: again)
@@ -32,7 +34,8 @@ struct TerminalScreen: View {
         .environment(\.colorScheme, .dark)
         .onChange(of: scenePhase) { _, phase in
             // A socket can't stay open in the background; tmux redraws the
-            // whole screen on attaching again, so nothing is lost.
+            // whole screen on attaching again, so nothing is lost. A shell
+            // starts over.
             if phase == .background {
                 paused = session.detach()
             } else if phase == .active, paused {
@@ -49,16 +52,19 @@ struct TerminalScreen: View {
                 session.detach()
                 dismiss()
             } label: {
-                Label("Detach", systemImage: "chevron.left")
+                Label(shell ? "Close" : "Detach", systemImage: "chevron.left")
             }
             .fontWeight(.medium)
             Spacer()
             HStack(spacing: 8) {
                 Circle().fill(dot).frame(width: 8, height: 8)
                 Text(name).font(.subheadline.monospaced().weight(.semibold)).foregroundStyle(Theme.text)
+                if shell {
+                    Text("shell").font(.caption.monospaced()).foregroundStyle(Theme.accent)
+                }
             }
             Spacer()
-            Text("ctrl+b d").font(.mono).foregroundStyle(Theme.dim)
+            Text(shell ? "exit" : "ctrl+b d").font(.mono).foregroundStyle(Theme.dim)
         }
         .padding(.horizontal)
         .padding(.vertical, 10)
@@ -85,7 +91,7 @@ struct TerminalScreen: View {
                     Button {
                         session.reattach()
                     } label: {
-                        Label("Attach again", systemImage: "apple.terminal")
+                        Label(shell ? "Open another shell" : "Attach again", systemImage: "apple.terminal")
                     }
                     .buttonStyle(.borderedProminent)
                     .tint(Theme.accentFill)

@@ -61,7 +61,8 @@ func terminalToken(r *http.Request) string {
 
 // terminal attaches to the agent's session over a WebSocket, as Enter does
 // in the TUI: a stopped sandbox is resumed and a missing agent started
-// first. Closing the socket detaches; the agent keeps running.
+// first. Closing the socket detaches; the agent keeps running. With
+// ?shell=1 it opens a shell in the sandbox instead, as $ does.
 func (s *Server) terminal(w http.ResponseWriter, r *http.Request) {
 	dev, ok := s.Devices.Authenticate(terminalToken(r))
 	if !ok {
@@ -83,26 +84,31 @@ func (s *Server) terminal(w http.ResponseWriter, r *http.Request) {
 	defer cancel()
 
 	name := r.PathValue("name")
+	shell := r.URL.Query().Get("shell") == "1"
+	verb, argv := "attach", agent.AttachArgv()
+	if shell {
+		verb, argv = "open a shell", agent.ShellArgv()
+	}
 	say := func(text string) { _ = c.Write(ctx, websocket.MessageBinary, []byte("\x1b[2m"+text+"\x1b[0m\r\n")) }
-	if err := s.prepareAttach(name, say); err != nil {
+	if err := s.prepareAttach(name, !shell, say); err != nil {
 		var ae *apiError
 		if errors.As(err, &ae) {
 			c.Close(closeUnavailable, closeReason(ae.msg))
 		} else {
-			c.Close(closeUnavailable, closeReason("Could not attach: "+err.Error()))
+			c.Close(closeUnavailable, closeReason("Could not "+verb+": "+err.Error()))
 		}
 		return
 	}
 
 	cols, _ := strconv.Atoi(r.URL.Query().Get("cols"))
 	rows, _ := strconv.Atoi(r.URL.Query().Get("rows"))
-	cmd := s.Monitor.svc.Backend.Interactive(name, agent.AttachArgv()...)
+	cmd := s.Monitor.svc.Backend.Interactive(name, argv...)
 	// xterm.js draws 24-bit colour, which AttachArgv asks tmux for when it
 	// sees this.
 	cmd.Env = append(os.Environ(), "TERM=xterm-256color", "COLORTERM=truecolor")
 	ptmx, err := pty.StartWithSize(cmd, winsize(cols, rows))
 	if err != nil {
-		c.Close(closeUnavailable, closeReason("Could not attach: "+err.Error()))
+		c.Close(closeUnavailable, closeReason("Could not "+verb+": "+err.Error()))
 		return
 	}
 	exited := make(chan error, 1)
@@ -171,10 +177,19 @@ func (s *Server) terminal(w http.ResponseWriter, r *http.Request) {
 			}
 		case <-outDone:
 			// tmux exits when the client detaches with Ctrl+B d or the
-			// session ends; let its last output reach the socket first.
+			// session ends, and a shell when it's exited; let the last
+			// output reach the socket first.
 			err := <-exited
 			exited <- err
 			reason := "Detached"
+			if shell {
+				reason = "The shell exited"
+			}
+			var ee *exec.ExitError
+			if shell && errors.As(err, &ee) {
+				// A shell's status is that of its last command.
+				err = nil
+			}
 			if err != nil {
 				reason = "The session ended: " + err.Error()
 			}
@@ -184,10 +199,10 @@ func (s *Server) terminal(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
-// prepareAttach gets the sandbox ready to attach to, starting it or its
-// agent and waiting for that when needed. say shows progress in the
-// terminal.
-func (s *Server) prepareAttach(name string, say func(string)) error {
+// prepareAttach gets the sandbox ready to attach to, starting it or, when
+// toAgent, its agent and waiting for that when needed. say shows progress
+// in the terminal. A shell needs only the sandbox running.
+func (s *Server) prepareAttach(name string, toAgent bool, say func(string)) error {
 	m := s.Monitor
 	m.mu.Lock()
 	it, ok := m.lookup(name)
@@ -204,12 +219,14 @@ func (s *Server) prepareAttach(name string, say func(string)) error {
 	switch {
 	case !it.running():
 		steps, done = m.svc.Resume(it.rec), "Resumed "+name
-	case !it.agentUp:
+	case toAgent && !it.agentUp:
 		steps, done = []core.Step{m.svc.StartAgent(it.rec, "", true)}, "Started the agent in "+name
 	}
-	// Attaching reads the reply, as in the TUI.
-	m.svc.MarkSeen(it.rec, it.probe)
-	m.publish()
+	if toAgent {
+		// Attaching reads the reply, as in the TUI.
+		m.svc.MarkSeen(it.rec, it.probe)
+		m.publish()
+	}
 	if len(steps) == 0 {
 		m.mu.Unlock()
 		return nil

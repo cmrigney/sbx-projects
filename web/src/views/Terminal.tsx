@@ -47,9 +47,10 @@ const keys: { label: string; aria: string; data: string }[] = [
 
 /**
  * The agent's session, as Enter attaches to it in the TUI. Leaving
- * detaches; the agent keeps running.
+ * detaches; the agent keeps running. With shell, a shell in the sandbox
+ * instead, as $ opens one.
  */
-export function TerminalView({ sandbox }: { sandbox: Sandbox }) {
+export function TerminalView({ sandbox, shell = false }: { sandbox: Sandbox; shell?: boolean }) {
   const { client } = useApp();
   const host = useRef<HTMLDivElement>(null);
   const term = useRef<XTerm | null>(null);
@@ -96,12 +97,12 @@ export function TerminalView({ sandbox }: { sandbox: Sandbox }) {
       t.open(host.current);
       fit.fit();
       t.focus();
-      ws = client.terminal(sandbox.name, t.cols, t.rows);
+      ws = client.terminal(sandbox.name, t.cols, t.rows, shell);
       ws.onopen = () => setPhase({ kind: "open" });
       ws.onmessage = (e) => t.write(new Uint8Array(e.data as ArrayBuffer));
       ws.onclose = (e) => {
         if (disposed) return;
-        setPhase(closed(e));
+        setPhase(closed(e, shell));
       };
     });
 
@@ -117,7 +118,7 @@ export function TerminalView({ sandbox }: { sandbox: Sandbox }) {
       t.dispose();
       term.current = null;
     };
-  }, [client, sandbox.name, attempt]);
+  }, [client, sandbox.name, shell, attempt]);
 
   const again = () => {
     setPhase({ kind: "connecting" });
@@ -130,17 +131,18 @@ export function TerminalView({ sandbox }: { sandbox: Sandbox }) {
   };
 
   return (
-    <div className="term-page" style={viewport} role="dialog" aria-modal aria-label={`${sandbox.name} terminal`}>
+    <div className="term-page" style={viewport} role="dialog" aria-modal aria-label={`${sandbox.name} ${shell ? "shell" : "terminal"}`}>
       <header className="term-bar">
         <button className="ghost back-btn" onClick={() => back({ page: "sandbox", name: sandbox.name })}>
           <Icon name="back" size={18} />
-          Detach
+          {shell ? "Close" : "Detach"}
         </button>
         <span className="term-title">
           <span className={`term-dot ${phase.kind}`} />
           {sandbox.name}
+          {shell && <span className="term-kind">shell</span>}
         </span>
-        <kbd className="hint">ctrl+b d</kbd>
+        <kbd className="hint">{shell ? "exit" : "ctrl+b d"}</kbd>
       </header>
       <div className="term-body">
         <div className="term-host" ref={host} />
@@ -150,7 +152,7 @@ export function TerminalView({ sandbox }: { sandbox: Sandbox }) {
             <div className="button-row">
               {phase.again && (
                 <button className="btn small primary" onClick={again}>
-                  <Icon name="terminal" size={16} /> Attach again
+                  <Icon name="terminal" size={16} /> {shell ? "Open another shell" : "Attach again"}
                 </button>
               )}
               <button className="btn small" onClick={() => back({ page: "sandbox", name: sandbox.name })}>
@@ -175,10 +177,10 @@ export function TerminalView({ sandbox }: { sandbox: Sandbox }) {
   );
 }
 
-function closed(e: CloseEvent): Phase {
+function closed(e: CloseEvent, shell: boolean): Phase {
   switch (e.code) {
     case terminalClose.detached:
-      return { kind: "closed", message: e.reason || "Detached. The agent keeps running.", again: true };
+      return { kind: "closed", message: e.reason || (shell ? "The shell exited." : "Detached. The agent keeps running."), again: true };
     case terminalClose.unavailable:
       return { kind: "closed", message: e.reason, again: true };
     case terminalClose.signedOut:
