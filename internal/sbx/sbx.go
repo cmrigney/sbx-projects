@@ -171,6 +171,9 @@ type Backend interface {
 	PublishPort(ctx context.Context, name string, p Port) error
 	// UnpublishPort stops forwarding a port List reported.
 	UnpublishPort(ctx context.Context, name string, p Port) error
+	// CopyIn copies a file on the host to dst in a running sandbox. dst's
+	// directory must exist.
+	CopyIn(ctx context.Context, name, src, dst string) error
 	// Exec runs a bash script in the sandbox's workspace and returns stdout.
 	Exec(ctx context.Context, name, script string) (string, error)
 	// Interactive returns a command that takes over the terminal.

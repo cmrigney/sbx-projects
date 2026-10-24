@@ -270,3 +270,26 @@ nonisolated struct PairResponse: Codable, Sendable {
     let deviceId: String
     let server: Server
 }
+
+/// A file to send with a message. The Mac copies it into the sandbox and
+/// names its path there in the message.
+nonisolated struct Attachment: Identifiable, Sendable {
+    let id = UUID()
+    var name: String
+    var data: Data
+    var mimeType: String
+
+    /// Numbers a name already in `taken`, so a mention names one file.
+    static func uniqueName(_ name: String, among taken: [String]) -> String {
+        let name = name.isEmpty ? "file" : name
+        let ext = (name as NSString).pathExtension
+        let base = ext.isEmpty ? name : String(name.dropLast(ext.count + 1))
+        var out = name
+        var i = 2
+        while taken.contains(out) {
+            out = ext.isEmpty ? "\(base)-\(i)" : "\(base)-\(i).\(ext)"
+            i += 1
+        }
+        return out
+    }
+}

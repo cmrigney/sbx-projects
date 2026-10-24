@@ -134,6 +134,7 @@ Everything goes through the `sbx` CLI.
 | Start agent | tmux on a private socket (`tmux -L sbxp`) inside the sandbox runs sbx's own `start-agent` launcher, so the agent keeps working with nothing attached |
 | Attach (`enter`) | `sbx exec -it N tmux -u -L sbxp attach -t agent` (adding `-T RGB` when your terminal sets `COLORTERM=truecolor`). Press `ctrl-b d` to come back |
 | Message (`i`), Open PR (`p`) | Your text is typed into the agent's session with `tmux send-keys` |
+| Files sent with a message (apps) | `sbx cp FILE N:/tmp/sbx-attachments/ID/NAME` for each file, outside the workspace so they never show up as changes, then the message with `(Attached files: PATH, ...)` added |
 | Check out locally (`c`) | On a private clone, `git fetch sandbox-N` then `git checkout -B BRANCH sandbox-N/BRANCH` in the project. sandboxd configures that remote automatically while the sandbox is running. |
 | Open in IDE (`o`) | On a private clone, `cursor --remote ssh-remote+N.sbx WORKSPACE` (or `code`, or whatever `$SBXP_IDE` names), the same as Remote-SSH: Connect to Host with sbx's `N.sbx` host |
 | Status, activity, changes | One `sbx exec` every few seconds per *running* sandbox reads the event log, `git log` and `git diff --numstat` against the project's default branch |
@@ -174,7 +175,7 @@ From the app you can:
 
 - Filter sandboxes by Needs you, Working and Ready, or search by title, branch or name. Parked sandboxes are hidden until you choose Parked.
 - Read an agent's activity, changed files and commits, and the full diff file by file.
-- Send the agent a message, or reply to its last answer.
+- Send the agent a message, or reply to its last answer. The paperclip attaches photos or files; tap one to mention it in the message.
 - Attach to the agent's terminal, as `Enter` does in the TUI, with a key bar for Ctrl, Esc, Tab and the arrows. **Detach** or **Ctrl+B, then d** returns to the sandbox; the agent keeps running.
 - Open a draft pull request, check out the branch on your Mac, and stop, resume or remove a sandbox.
 - Create a sandbox with the same choices as the New sandbox form.
@@ -191,6 +192,8 @@ Your phone and Mac need to be on the same network. Drop `--demo` to use your rea
 ### In a browser
 
 The same server also serves a web app that does everything the iPhone app does, for Android phones, iPads and other computers. Open the `https://…/#/pair?code=…` link `--pair` prints, or open the Mac's address and type the code. Your browser warns about the self-signed certificate the first time; accept it to continue. Each browser pairs as its own device, such as "Safari on iPhone", and `api devices rm` signs it out.
+
+Messages in the web app can carry files too: choose them with the paperclip, paste a screenshot, or drop files on the message box. Click a file to put its name in the message.
 
 The web app can also **attach** to an agent, as `Enter` does in the TUI: **Attach** on a sandbox (or `Enter` on a keyboard) opens its terminal in the page, resuming the sandbox or starting the agent first when needed. On a phone, a key bar adds Ctrl, Esc, Tab and the arrows. **Detach** or **Ctrl+B, then d** returns to the sandbox; the agent keeps running.
 
@@ -246,7 +249,7 @@ The TUI and the API can run at once. Each probes running sandboxes on its own, a
 | `GET /v1/sandboxes/{name}` | One sandbox with its activity, changed files and commits |
 | `GET …/reply`, `POST …/seen` | The last reply as markdown, and clearing its unread mark |
 | `GET …/diff` | The full diff, split by file |
-| `POST …/messages` `{"text"}` | Type a message into the agent's session |
+| `POST …/messages` `{"text"}` | Type a message into the agent's session. As `multipart/form-data`, a `text` field and `file` parts (up to 20 files, 100 MB in all) are copied into the sandbox first, and the message gets their paths there |
 | `POST …/pr`, `…/stop`, `…/resume`, `…/checkout`; `DELETE /v1/sandboxes/{name}` | The TUI's actions. They answer at once with the sandbox busy; the outcome arrives as an `action` event |
 | `POST /v1/sandboxes` | Create a sandbox, as the New sandbox form does |
 | `GET /v1/options?project=ID` | Agents, models, MCP servers and the project's defaults for that form |

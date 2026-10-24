@@ -180,10 +180,12 @@ export function saveToken(token: string | null) {
 async function request<T>(token: string | null, method: string, path: string, body?: unknown, signal?: AbortSignal): Promise<T> {
   const headers: Record<string, string> = {};
   if (token) headers.Authorization = `Bearer ${token}`;
-  if (body !== undefined) headers["Content-Type"] = "application/json";
+  // A form sets its own Content-Type, with the boundary between its parts.
+  const form = body instanceof FormData;
+  if (body !== undefined && !form) headers["Content-Type"] = "application/json";
   let res: Response;
   try {
-    res = await fetch(path, { method, headers, body: body === undefined ? undefined : JSON.stringify(body), signal });
+    res = await fetch(path, { method, headers, body: body === undefined ? undefined : form ? body : JSON.stringify(body), signal });
   } catch (e) {
     if (signal?.aborted) throw e;
     throw new APIError("Can't reach the Mac. Check that sbx-projects api is running.", 0);
@@ -206,7 +208,14 @@ export class Client {
   reply = (name: string) => this.call<Reply>("GET", `/v1/sandboxes/${enc(name)}/reply`);
   seen = (name: string) => this.call<Sandbox>("POST", `/v1/sandboxes/${enc(name)}/seen`);
   diff = (name: string) => this.call<Diff>("GET", `/v1/sandboxes/${enc(name)}/diff`);
-  message = (name: string, text: string) => this.call<Sandbox>("POST", `/v1/sandboxes/${enc(name)}/messages`, { text });
+  /** Files are copied into the sandbox and the message names their paths there. */
+  message = (name: string, text: string, files: File[] = []) => {
+    if (files.length === 0) return this.call<Sandbox>("POST", `/v1/sandboxes/${enc(name)}/messages`, { text });
+    const form = new FormData();
+    form.append("text", text);
+    for (const f of files) form.append("file", f, f.name);
+    return this.call<Sandbox>("POST", `/v1/sandboxes/${enc(name)}/messages`, form);
+  };
   openPR = (name: string) => this.call<Sandbox>("POST", `/v1/sandboxes/${enc(name)}/pr`);
   stop = (name: string) => this.call<Sandbox>("POST", `/v1/sandboxes/${enc(name)}/stop`);
   resume = (name: string) => this.call<Sandbox>("POST", `/v1/sandboxes/${enc(name)}/resume`);

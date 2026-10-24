@@ -2,12 +2,18 @@ package api
 
 import (
 	"bufio"
+	"bytes"
 	"context"
 	"encoding/json"
 	"errors"
+	"io"
+	"maps"
+	"mime/multipart"
 	"net/http"
 	"net/http/httptest"
+	"path"
 	"path/filepath"
+	"slices"
 	"strings"
 	"sync/atomic"
 	"testing"
@@ -422,5 +428,82 @@ func TestPublishAndUnpublishAPort(t *testing.T) {
 	got = f.waitFor(t, func(m map[string]SandboxView) bool { return len(m["claude-a"].Ports) == 1 && !m["claude-a"].Busy })
 	if p := got["claude-a"].Ports[0]; p.HostIP != "0.0.0.0" || p.HostPort != 5173 || p.SandboxPort != 5173 {
 		t.Fatalf("port = %+v, want 0.0.0.0:5173 → 5173", p)
+	}
+}
+
+// postFiles sends a message with files as a multipart form.
+func (f *fixture) postFiles(t *testing.T, name, text string, files map[string]string) int {
+	t.Helper()
+	var body bytes.Buffer
+	mw := multipart.NewWriter(&body)
+	_ = mw.WriteField("text", text)
+	names := slices.Sorted(maps.Keys(files))
+	for _, n := range names {
+		fw, _ := mw.CreateFormFile("file", n)
+		_, _ = io.WriteString(fw, files[n])
+	}
+	mw.Close()
+	req, _ := http.NewRequest("POST", f.srv.URL+"/v1/sandboxes/"+name+"/messages", &body)
+	req.Header.Set("Authorization", "Bearer "+f.token)
+	req.Header.Set("Content-Type", mw.FormDataContentType())
+	resp, err := f.srv.Client().Do(req)
+	if err != nil {
+		t.Fatal(err)
+	}
+	resp.Body.Close()
+	return resp.StatusCode
+}
+
+func TestMessageWithFiles(t *testing.T) {
+	var mock *sbx.Mock
+	f := newFixtureWith(t, []sbx.MockSeed{{Name: "claude-a", Agent: "claude", Workspace: "/src/repo"}},
+		func(m *sbx.Mock) sbx.Backend { mock = m; return m })
+	f.waitFor(t, func(m map[string]SandboxView) bool { _, ok := m["claude-a"]; return ok })
+
+	if st := f.postFiles(t, "claude-a", "  ", nil); st != http.StatusBadRequest {
+		t.Errorf("an empty message = %d, want 400", st)
+	}
+	// The sandbox is stopped, so it is started before the files go in.
+	files := map[string]string{"../../etc/passwd": "x", "my shot.png": "png", "dir/my shot.png": "png2"}
+	if st := f.postFiles(t, "claude-a", "what's wrong here?", files); st != http.StatusAccepted {
+		t.Fatalf("send = %d", st)
+	}
+	f.waitFor(t, func(m map[string]SandboxView) bool { return m["claude-a"].Running && !m["claude-a"].Busy })
+	copied := mock.Copied("claude-a")
+	if len(copied) != 3 {
+		t.Fatalf("copied %v", copied)
+	}
+	var names []string
+	for _, p := range copied {
+		if !strings.HasPrefix(p, core.AttachDir+"/") {
+			t.Errorf("%s isn't under %s", p, core.AttachDir)
+		}
+		names = append(names, path.Base(p))
+	}
+	if got := strings.Join(names, ","); got != "passwd,my_shot.png,my_shot-2.png" {
+		t.Errorf("names = %s", got)
+	}
+
+	big := maxUpload
+	maxUpload = 10
+	defer func() { maxUpload = big }()
+	if st := f.postFiles(t, "claude-a", "", map[string]string{"a": strings.Repeat("x", 2<<20)}); st != http.StatusRequestEntityTooLarge {
+		t.Errorf("a file over the limit = %d, want 413", st)
+	}
+}
+
+func TestSafeName(t *testing.T) {
+	for in, want := range map[string]string{
+		"report.pdf":          "report.pdf",
+		`C:\Users\me\a b.txt`: "a_b.txt",
+		"../../x":             "x",
+		".env":                "env",
+		"":                    "file",
+		"$(rm -rf).sh":        "__rm_-rf_.sh",
+		"résumé.pdf":          "résumé.pdf",
+	} {
+		if got := safeName(in); got != want {
+			t.Errorf("safeName(%q) = %q, want %q", in, got, want)
+		}
 	}
 }

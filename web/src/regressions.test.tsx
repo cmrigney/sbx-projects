@@ -2,7 +2,7 @@
 import { act, useState } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
-import { Sheet } from "./components";
+import { Sheet, withUniqueNames } from "./components";
 import { AppProvider, useApp } from "./store";
 import { Client, type Sandbox, type ServerEvent } from "./api";
 
@@ -84,3 +84,24 @@ for (const method of ["act", "create", "markSeen"] as const) {
     });
   }
 }
+
+it("numbers attached files that share a name, so a mention names one", () => {
+  const png = (name: string) => new File(["x"], name, { type: "image/png" });
+  const names = withUniqueNames([png("image.png")], [png("image.png"), png("image.png"), png("notes")]).map((f) => f.name);
+  expect(names).toEqual(["image.png", "image-2.png", "image-3.png", "notes"]);
+});
+
+it("sends attached files as a form and plain messages as JSON", async () => {
+  const fetch = vi.spyOn(globalThis, "fetch").mockImplementation(async () => new Response("{}"));
+  const c = new Client("t");
+  await c.message("a b", "hi");
+  await c.message("a b", "look", [new File(["x"], "shot.png")]);
+  const [[url, plain], [, withFiles]] = fetch.mock.calls as [string, RequestInit][];
+  expect(url).toBe("/v1/sandboxes/a%20b/messages");
+  expect(plain.body).toBe(JSON.stringify({ text: "hi" }));
+  expect((plain.headers as Record<string, string>)["Content-Type"]).toBe("application/json");
+  const form = withFiles.body as FormData;
+  expect(form.get("text")).toBe("look");
+  expect((form.get("file") as File).name).toBe("shot.png");
+  expect((withFiles.headers as Record<string, string>)["Content-Type"]).toBeUndefined();
+});

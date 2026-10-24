@@ -99,8 +99,35 @@ nonisolated final class APIClient: Sendable {
         try await perform(request("GET", "/v1/options?project=\(project)"))
     }
 
-    func send(_ text: String, to name: String) async throws -> Sandbox {
-        try await perform(request("POST", "/v1/sandboxes/\(escape(name))/messages", body: ["text": text]))
+    /// Files go as a multipart form; the Mac copies them into the sandbox
+    /// and the message names their paths there.
+    func send(_ text: String, files: [Attachment] = [], to name: String) async throws -> Sandbox {
+        let path = "/v1/sandboxes/\(escape(name))/messages"
+        guard !files.isEmpty else {
+            return try await perform(request("POST", path, body: ["text": text]))
+        }
+        let boundary = "sbxp-\(UUID().uuidString)"
+        var req = request("POST", path)
+        req.setValue("multipart/form-data; boundary=\(boundary)", forHTTPHeaderField: "Content-Type")
+        req.httpBody = Self.form(text: text, files: files, boundary: boundary)
+        // Photos can take a while over Wi-Fi.
+        req.timeoutInterval = 300
+        return try await perform(req)
+    }
+
+    private static func form(text: String, files: [Attachment], boundary: String) -> Data {
+        var body = Data()
+        func add(_ s: String) { body.append(Data(s.utf8)) }
+        add("--\(boundary)\r\nContent-Disposition: form-data; name=\"text\"\r\n\r\n\(text)\r\n")
+        for f in files {
+            let filename = f.name.map { $0 == "\"" || $0.isNewline ? "_" : $0 }
+            add("--\(boundary)\r\nContent-Disposition: form-data; name=\"file\"; filename=\"\(String(filename))\"\r\n")
+            add("Content-Type: \(f.mimeType)\r\n\r\n")
+            body.append(f.data)
+            add("\r\n")
+        }
+        add("--\(boundary)--\r\n")
+        return body
     }
 
     /// Starts one of the actions with no input: "pr", "stop", "resume" or

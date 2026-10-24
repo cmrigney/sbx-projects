@@ -191,6 +191,50 @@ func TestSendStartsWhatIsNeeded(t *testing.T) {
 	}
 }
 
+func TestSendFilesCopiesOnceTheSandboxIsUp(t *testing.T) {
+	s, mock, _ := newTestService(t, []sbx.MockSeed{{Name: "n", Agent: "claude", Workspace: "/src/repo"}})
+	rec := &store.Sandbox{Name: "n", Agent: "claude"}
+	for _, c := range []struct {
+		running, up bool
+		verbs       string
+	}{
+		{false, false, "Starting,Attaching files to,Starting the agent in"},
+		{true, false, "Attaching files to,Starting the agent in"},
+		{true, true, "Attaching files to,Messaging"},
+	} {
+		var verbs []string
+		for _, st := range s.SendFiles(rec, c.running, c.up, "hi", "/tmp/x", []string{"/host/a.png"}) {
+			verbs = append(verbs, st.Verb)
+		}
+		if got := strings.Join(verbs, ","); got != c.verbs {
+			t.Errorf("running=%v up=%v: %s, want %s", c.running, c.up, got, c.verbs)
+		}
+	}
+
+	if err := Run(context.Background(), s.SendFiles(rec, false, false, "hi", "/tmp/x", []string{"/host/a.png", "/host/b.txt"})); err != nil {
+		t.Fatal(err)
+	}
+	if got := strings.Join(mock.Copied("n"), ","); got != "/tmp/x/a.png,/tmp/x/b.txt" {
+		t.Errorf("copied %s", got)
+	}
+}
+
+func TestAttachNote(t *testing.T) {
+	for _, c := range []struct {
+		text  string
+		paths []string
+		want  string
+	}{
+		{"hi", nil, "hi"},
+		{"look at this", []string{"/tmp/a.png"}, "look at this (Attached file: /tmp/a.png)"},
+		{"", []string{"/tmp/a.png", "/tmp/b.txt"}, "Attached files: /tmp/a.png, /tmp/b.txt"},
+	} {
+		if got := AttachNote(c.text, c.paths); got != c.want {
+			t.Errorf("AttachNote(%q, %v) = %q, want %q", c.text, c.paths, got, c.want)
+		}
+	}
+}
+
 func TestReconcile(t *testing.T) {
 	s, mock, p := newTestService(t, []sbx.MockSeed{
 		{Name: "inside", Agent: "claude", Workspace: "/src/repo/sub"},

@@ -344,8 +344,8 @@ final class AppModel {
         }
     }
 
-    func send(_ text: String, to name: String) async -> Bool {
-        await run(name) { try await $0.send(text, to: name) }
+    func send(_ text: String, files: [Attachment] = [], to name: String) async -> Bool {
+        await run(name) { try await $0.send(text, files: files, to: name) }
     }
 
     func openPR(_ name: String) async {

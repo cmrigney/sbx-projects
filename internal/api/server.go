@@ -8,6 +8,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"mime"
 	"net"
 	"net/http"
 	"slices"
@@ -296,8 +297,10 @@ func (s *Server) diff(w http.ResponseWriter, r *http.Request) {
 // act starts an action on the named sandbox and answers with its view,
 // which shows the action as the sandbox's status. How it ends arrives as
 // an "action" event.
-func (s *Server) act(w http.ResponseWriter, r *http.Request, fn func(it item) ([]core.Step, string, error)) {
+// It returns when the action finishes, or nil when it never started.
+func (s *Server) act(w http.ResponseWriter, r *http.Request, fn func(it item) ([]core.Step, string, error)) <-chan error {
 	var v SandboxView
+	var finished <-chan error
 	err := s.withSandbox(r, func(it item) error {
 		if it.busy != "" {
 			return fail(http.StatusConflict, "%s is busy: %s", it.rec.Name, it.busy)
@@ -306,32 +309,60 @@ func (s *Server) act(w http.ResponseWriter, r *http.Request, fn func(it item) ([
 		if err != nil {
 			return err
 		}
-		s.Monitor.run(it.rec.Name, steps, done)
+		finished = s.Monitor.run(it.rec.Name, steps, done)
 		v = sandboxView(s.Monitor.item(it.rec))
 		return nil
 	})
 	if err != nil {
 		writeErr(w, err)
-		return
+		return nil
 	}
 	writeJSON(w, http.StatusAccepted, v)
+	return finished
 }
 
+// message types text into the agent's session. A multipart form can also
+// carry files, which are copied into the sandbox first and named in the
+// message by their paths there.
 func (s *Server) message(w http.ResponseWriter, r *http.Request) {
-	var req struct {
-		Text string `json:"text"`
+	up := &upload{}
+	if mt, _, _ := mime.ParseMediaType(r.Header.Get("Content-Type")); mt == "multipart/form-data" {
+		var err error
+		if up, err = readUpload(w, r); err != nil {
+			writeErr(w, err)
+			return
+		}
+	} else {
+		var req struct {
+			Text string `json:"text"`
+		}
+		if err := readJSON(r, &req); err != nil {
+			writeErr(w, err)
+			return
+		}
+		up.text = req.Text
 	}
-	if err := readJSON(r, &req); err != nil {
-		writeErr(w, err)
-		return
-	}
-	text := strings.TrimSpace(req.Text)
-	s.act(w, r, func(it item) ([]core.Step, string, error) {
-		if text == "" {
+	text := strings.TrimSpace(up.text)
+	finished := s.act(w, r, func(it item) ([]core.Step, string, error) {
+		if text == "" && len(up.files) == 0 {
 			return nil, "", fail(http.StatusBadRequest, "The message is empty")
 		}
-		return s.Monitor.svc.Send(it.rec, it.running(), it.agentUp, text), "Sent your message to " + it.rec.Name, nil
+		done := "Sent your message to " + it.rec.Name
+		if n := len(up.files); n > 0 {
+			done = fmt.Sprintf("Sent your message and %s to %s", countFiles(n), it.rec.Name)
+		}
+		dir := up.sandboxDir()
+		msg := core.AttachNote(text, up.sandboxPaths(dir))
+		return s.Monitor.svc.SendFiles(it.rec, it.running(), it.agentUp, msg, dir, up.files), done, nil
 	})
+	if finished == nil {
+		up.remove()
+		return
+	}
+	go func() {
+		<-finished
+		up.remove()
+	}()
 }
 
 func (s *Server) openPR(w http.ResponseWriter, r *http.Request) {

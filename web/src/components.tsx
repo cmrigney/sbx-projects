@@ -268,6 +268,8 @@ const icons = {
     </>
   ),
   prompt: <path d="m5 7 5 5-5 5m7 0h7" {...line} strokeWidth={2.4} />,
+  clip: <path d="m20 11.5-7.8 7.8a5 5 0 0 1-7.1-7.1l8.5-8.5a3.3 3.3 0 0 1 4.7 4.7l-8.5 8.5a1.7 1.7 0 0 1-2.4-2.4l7.8-7.8" {...line} />,
+  file: <path d="M6 3h8l4 4v14H6zM14 3v4h4" {...line} />,
 };
 
 /**
@@ -333,14 +335,18 @@ export function Sheet({
 
 /**
  * Types a message into the agent's session. A stopped sandbox is started,
- * and an agent that isn't running is started with the message.
+ * and an agent that isn't running is started with the message. Attached
+ * files are copied into the sandbox and the message names their paths.
  */
 export function Composer({ sandbox, placeholder, onSent }: { sandbox: Sandbox; placeholder?: string; onSent?: () => void }) {
   const { act } = useApp();
   const [text, setText] = useState("");
+  const [files, setFiles] = useState<File[]>([]);
   const [sending, setSending] = useState(false);
   const ref = useRef<HTMLTextAreaElement>(null);
+  const picker = useRef<HTMLInputElement>(null);
   const trimmed = text.trim();
+  const canSend = (trimmed !== "" || files.length > 0) && !sending && !sandbox.busy;
 
   // Grows with what's typed, up to six lines.
   useEffect(() => {
@@ -350,11 +356,31 @@ export function Composer({ sandbox, placeholder, onSent }: { sandbox: Sandbox; p
     el.style.height = `${Math.min(el.scrollHeight, 140)}px`;
   }, [text]);
 
+  const attach = (list: FileList | File[] | null) => {
+    if (list && list.length) setFiles((fs) => withUniqueNames(fs, Array.from(list)));
+  };
+
+  // Puts the file's name where the cursor is, so the message can say which
+  // file it means.
+  const mention = (f: File) => {
+    const el = ref.current;
+    const at = el?.selectionStart ?? text.length;
+    const end = el?.selectionEnd ?? at;
+    const before = text.slice(0, at);
+    const ins = (before && !/\s$/.test(before) ? " " : "") + f.name + " ";
+    setText(before + ins + text.slice(end));
+    requestAnimationFrame(() => {
+      el?.focus();
+      el?.setSelectionRange(at + ins.length, at + ins.length);
+    });
+  };
+
   const send = async () => {
-    if (!trimmed || sending || sandbox.busy) return;
+    if (!canSend) return;
     setSending(true);
-    if (await act(sandbox.name, (c) => c.message(sandbox.name, trimmed))) {
+    if (await act(sandbox.name, (c) => c.message(sandbox.name, trimmed, files))) {
       setText("");
+      setFiles([]);
       onSent?.();
     }
     setSending(false);
@@ -362,37 +388,109 @@ export function Composer({ sandbox, placeholder, onSent }: { sandbox: Sandbox; p
 
   return (
     <form
-      className="composer"
+      className={`composer${files.length ? " has-files" : ""}`}
       onSubmit={(e) => {
         e.preventDefault();
         send();
       }}
+      onDragOver={(e) => {
+        if (e.dataTransfer.types.includes("Files")) e.preventDefault();
+      }}
+      onDrop={(e) => {
+        if (!e.dataTransfer.files.length) return;
+        e.preventDefault();
+        attach(e.dataTransfer.files);
+      }}
     >
-      <span className="composer-prompt" aria-hidden>
-        <Icon name="prompt" size={16} />
-      </span>
-      <textarea
-        id="composer"
-        ref={ref}
-        rows={1}
-        value={text}
-        placeholder={placeholder ?? `Message ${sandbox.agentLabel}`}
-        onChange={(e) => setText(e.target.value)}
-        onKeyDown={(e) => {
-          // Enter sends on a keyboard; on a phone the return key adds a line.
-          if (e.key === "Enter" && !e.shiftKey && !e.nativeEvent.isComposing && matchMedia("(pointer: fine)").matches) {
-            e.preventDefault();
-            send();
-          }
-        }}
-        aria-label={placeholder ?? `Message ${sandbox.agentLabel}`}
-      />
-      <kbd className="hint composer-hint">⏎</kbd>
-      <button type="submit" className="send" disabled={!trimmed || sending || sandbox.busy} aria-label="Send">
-        {sending ? <span className="spinner small" /> : <Icon name="send" size={18} />}
-      </button>
+      {files.length > 0 && (
+        <ul className="attachments" aria-label="Attached files">
+          {files.map((f, i) => (
+            <li key={f.name} className="attachment">
+              <button type="button" className="attachment-name" onClick={() => mention(f)} title={`Mention ${f.name} in the message`}>
+                <Icon name="file" size={14} />
+                <span>{f.name}</span>
+                <small>{fileSize(f.size)}</small>
+              </button>
+              <button
+                type="button"
+                className="attachment-remove"
+                onClick={() => setFiles((fs) => fs.filter((_, j) => j !== i))}
+                aria-label={`Remove ${f.name}`}
+              >
+                <Icon name="close" size={13} />
+              </button>
+            </li>
+          ))}
+        </ul>
+      )}
+      <div className="composer-row">
+        <button type="button" className="composer-attach" onClick={() => picker.current?.click()} aria-label="Attach files" title="Attach files">
+          <Icon name="clip" size={18} />
+        </button>
+        <input
+          ref={picker}
+          type="file"
+          multiple
+          hidden
+          onChange={(e) => {
+            attach(e.target.files);
+            e.target.value = "";
+          }}
+        />
+        <textarea
+          id="composer"
+          ref={ref}
+          rows={1}
+          value={text}
+          placeholder={placeholder ?? `Message ${sandbox.agentLabel}`}
+          onChange={(e) => setText(e.target.value)}
+          onPaste={(e) => {
+            // Pasting a screenshot attaches it.
+            if (e.clipboardData.files.length) {
+              e.preventDefault();
+              attach(e.clipboardData.files);
+            }
+          }}
+          onKeyDown={(e) => {
+            // Enter sends on a keyboard; on a phone the return key adds a line.
+            if (e.key === "Enter" && !e.shiftKey && !e.nativeEvent.isComposing && matchMedia("(pointer: fine)").matches) {
+              e.preventDefault();
+              send();
+            }
+          }}
+          aria-label={placeholder ?? `Message ${sandbox.agentLabel}`}
+        />
+        <kbd className="hint composer-hint">⏎</kbd>
+        <button type="submit" className="send" disabled={!canSend} aria-label="Send">
+          {sending ? <span className="spinner small" /> : <Icon name="send" size={18} />}
+        </button>
+      </div>
     </form>
   );
+}
+
+/**
+ * Adds files, numbering any whose name is already attached, so a mention
+ * names one file. Pasted screenshots are all called image.png.
+ */
+export function withUniqueNames(have: File[], add: File[]): File[] {
+  const taken = new Set(have.map((f) => f.name));
+  const out = [...have];
+  for (const f of add) {
+    let name = f.name || "file";
+    const dot = name.lastIndexOf(".");
+    const [base, ext] = dot > 0 ? [name.slice(0, dot), name.slice(dot)] : [name, ""];
+    for (let i = 2; taken.has(name); i++) name = `${base}-${i}${ext}`;
+    taken.add(name);
+    out.push(name === f.name ? f : new File([f], name, { type: f.type, lastModified: f.lastModified }));
+  }
+  return out;
+}
+
+export function fileSize(n: number) {
+  if (n < 1024) return `${n} B`;
+  if (n < 1024 * 1024) return `${Math.round(n / 1024)} KB`;
+  return `${(n / 1024 / 1024).toFixed(1)} MB`;
 }
 
 export function Toasts() {
