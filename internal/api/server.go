@@ -31,8 +31,8 @@ type Server struct {
 	// two Macs with the same name.
 	ID   string
 	Name string
-	// ProjectsDir is where projects made from the apps go. Empty picks the
-	// folder most projects are in.
+	// ProjectsDir is where projects made from the apps go. Empty means
+	// ~/Projects.
 	ProjectsDir string
 
 	// making holds one new project at a time.

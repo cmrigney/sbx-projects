@@ -399,14 +399,14 @@ func TestNewProject(t *testing.T) {
 		}
 	}
 	var opts ProjectOptionsView
-	if f.do(t, "GET", "/v1/project-options", "", &opts); opts.Dir != "/src" {
-		t.Fatalf("new projects should go beside the others: %+v", opts)
+	if f.do(t, "GET", "/v1/project-options", "", &opts); opts.Dir != "~/Projects" {
+		t.Fatalf("new projects should go in ~/Projects: %+v", opts)
 	}
 
 	// A URL names the project when no name is given.
 	var cloned NewProjectView
 	if st := f.do(t, "POST", "/v1/projects", `{"cloneUrl":"git@github.com:o/tools.git"}`, &cloned); st != http.StatusCreated ||
-		cloned.Project.Name != "tools" || cloned.Project.Path != "/src/tools" || cloned.Sandbox != nil {
+		cloned.Project.Name != "tools" || cloned.Project.Path != filepath.Join(core.ProjectsDir(), "tools") || cloned.Sandbox != nil {
 		t.Fatalf("clone: %d %+v", st, cloned)
 	}
 

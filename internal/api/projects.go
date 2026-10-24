@@ -45,20 +45,17 @@ type ProjectOptionsView struct {
 	CanPublish bool `json:"canPublish"`
 }
 
-// projectsDir is where new projects go. Callers hold m.mu.
+// projectsDir is where new projects go.
 func (s *Server) projectsDir() string {
 	if s.ProjectsDir != "" {
 		return s.ProjectsDir
 	}
-	return core.ProjectsDir(s.Monitor.projects)
+	return core.ProjectsDir()
 }
 
 func (s *Server) projectOptions(w http.ResponseWriter, r *http.Request) {
-	m := s.Monitor
-	m.mu.Lock()
-	dir, demo := s.projectsDir(), m.svc.Demo
-	m.mu.Unlock()
-	v := ProjectOptionsView{Dir: tilde(dir), CanPublish: demo}
+	demo := s.Monitor.svc.Demo
+	v := ProjectOptionsView{Dir: tilde(s.projectsDir()), CanPublish: demo}
 	if !demo {
 		if _, err := exec.LookPath("gh"); err == nil {
 			ctx, cancel := context.WithTimeout(r.Context(), 10*time.Second)
@@ -103,9 +100,7 @@ func (s *Server) newProject(w http.ResponseWriter, r *http.Request) {
 	s.making.Lock()
 	defer s.making.Unlock()
 	m := s.Monitor
-	m.mu.Lock()
 	path := filepath.Join(s.projectsDir(), name)
-	m.mu.Unlock()
 	p, steps, err := m.svc.NewProject(core.NewProjectRequest{Path: path, CloneURL: url, Publish: req.Publish})
 	if err != nil {
 		writeErr(w, fail(http.StatusBadRequest, "%s", capitalize(err.Error())))

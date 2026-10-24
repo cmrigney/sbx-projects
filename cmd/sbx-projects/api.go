@@ -47,7 +47,7 @@ func runAPICmd(args []string) error {
 	sbxBin := fs.String("sbx", "sbx", "sbx binary to run")
 	demo := fs.Bool("demo", false, "serve built-in demo data instead of sbx")
 	listen := fs.String("listen", ":7443", "address to listen on")
-	projectsDir := fs.String("projects-dir", "", "folder the apps make new projects in; empty for the one most projects are in")
+	projectsDir := fs.String("projects-dir", "", "folder the apps make new projects in (default ~/Projects)")
 	pair := fs.Bool("pair", false, "show a code to pair a new device")
 	host, _ := os.Hostname()
 	name := fs.String("name", strings.TrimSuffix(host, ".local"), "name the app shows for this machine")
