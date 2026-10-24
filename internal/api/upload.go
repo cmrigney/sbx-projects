@@ -92,12 +92,21 @@ func readUpload(w http.ResponseWriter, r *http.Request) (*upload, error) {
 	return up, nil
 }
 
+// saveFile writes an uploaded file that anyone can read. sbx cp keeps the
+// mode and the Mac user's uid, which isn't the sandbox user's, so a file
+// only its owner can read is unreadable to the agent. The directory it is
+// in is the Mac user's alone, so the file stays private on the Mac. The
+// mode is set after creating, as a umask could take it away.
 func saveFile(p string, src io.Reader) error {
 	f, err := os.OpenFile(p, os.O_WRONLY|os.O_CREATE|os.O_EXCL, 0o600)
 	if err != nil {
 		return err
 	}
 	if _, err := io.Copy(f, src); err != nil {
+		f.Close()
+		return err
+	}
+	if err := f.Chmod(0o644); err != nil {
 		f.Close()
 		return err
 	}

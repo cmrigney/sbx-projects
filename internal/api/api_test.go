@@ -16,6 +16,7 @@ import (
 	"path/filepath"
 	"slices"
 	"strings"
+	"sync"
 	"sync/atomic"
 	"testing"
 	"time"
@@ -455,10 +456,27 @@ func (f *fixture) postFiles(t *testing.T, name, text string, files map[string]st
 	return resp.StatusCode
 }
 
+// modes records the mode of each file copied into a sandbox.
+type modes struct {
+	*sbx.Mock
+	mu    sync.Mutex
+	modes []os.FileMode
+}
+
+func (m *modes) CopyIn(ctx context.Context, name, src, dst string) error {
+	if fi, err := os.Stat(src); err == nil {
+		m.mu.Lock()
+		m.modes = append(m.modes, fi.Mode().Perm())
+		m.mu.Unlock()
+	}
+	return m.Mock.CopyIn(ctx, name, src, dst)
+}
+
 func TestMessageWithFiles(t *testing.T) {
 	var mock *sbx.Mock
+	var be *modes
 	f := newFixtureWith(t, []sbx.MockSeed{{Name: "claude-a", Agent: "claude", Workspace: "/src/repo"}},
-		func(m *sbx.Mock) sbx.Backend { mock = m; return m })
+		func(m *sbx.Mock) sbx.Backend { mock = m; be = &modes{Mock: m}; return be })
 	f.waitFor(t, func(m map[string]SandboxView) bool { _, ok := m["claude-a"]; return ok })
 
 	if st := f.postFiles(t, "claude-a", "  ", nil); st != http.StatusBadRequest {
@@ -484,6 +502,15 @@ func TestMessageWithFiles(t *testing.T) {
 	if got := strings.Join(names, ","); got != "passwd,my_shot.png,my_shot-2.png" {
 		t.Errorf("names = %s", got)
 	}
+	// sbx cp keeps the mode and the Mac user's uid, so the sandbox user
+	// can only read files everyone can.
+	be.mu.Lock()
+	for _, m := range be.modes {
+		if m&0o004 == 0 {
+			t.Errorf("a file was copied with mode %v, which the sandbox user can't read", m)
+		}
+	}
+	be.mu.Unlock()
 
 	if st := f.postFiles(t, "claude-a", strings.Repeat("x", maxText+1), nil); st != http.StatusRequestEntityTooLarge {
 		t.Errorf("text over the limit = %d, want 413", st)

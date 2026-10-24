@@ -162,7 +162,11 @@ func (s *Service) copyIn(name, dir string, files []string) Step {
 				return "", err
 			}
 		}
-		return "", nil
+		// The copies keep the Mac user's uid, so the agent can read them
+		// but not change or delete them. Giving them to the sandbox's user
+		// needs sudo, which a sandbox may not allow, so it is only tried.
+		_, err := be.Exec(ctx, name, fmt.Sprintf(`sudo -n chown -R "$(id -u):$(id -g)" '%s' 2>/dev/null || true`, dir))
+		return "", err
 	}}
 }
 
