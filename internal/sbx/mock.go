@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"os/exec"
 	"regexp"
+	"slices"
 	"strconv"
 	"strings"
 	"sync"
@@ -169,6 +170,36 @@ func (m *Mock) Remove(ctx context.Context, name string) error {
 		}
 	}
 	return nil
+}
+
+func (m *Mock) PublishPort(ctx context.Context, name string, p Port) error {
+	if err := sleepCtx(ctx, 300*time.Millisecond); err != nil {
+		return err
+	}
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	s, ok := m.sbxs[name]
+	if !ok {
+		return fmt.Errorf("sbx ports: no such sandbox %q", name)
+	}
+	for _, o := range m.sbxs {
+		for _, q := range o.Ports {
+			if q.HostPort == p.HostPort && q.Protocol == p.Protocol {
+				return fmt.Errorf("sbx ports: host port %d is already published", p.HostPort)
+			}
+		}
+	}
+	s.Ports = append(slices.Clone(s.Ports), p)
+	return nil
+}
+
+func (m *Mock) UnpublishPort(ctx context.Context, name string, p Port) error {
+	if err := sleepCtx(ctx, 300*time.Millisecond); err != nil {
+		return err
+	}
+	return m.with(name, func(s *mockSandbox) {
+		s.Ports = slices.DeleteFunc(slices.Clone(s.Ports), func(q Port) bool { return q == p })
+	})
 }
 
 var (

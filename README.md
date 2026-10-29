@@ -64,6 +64,7 @@ Keys are case-sensitive. Sandbox actions apply to the selected sandbox; move out
 | `o` | Open the sandbox’s private clone in your IDE over SSH |
 | `c` | Fetch the private clone’s branch into your local checkout and check it out |
 | `$` | Open a shell in the sandbox |
+| `P` / `U` | Publish / unpublish a port (`sbx ports`) |
 | `s` / `r` / `x` | Stop / resume / remove the sandbox |
 
 An orange **●** and bold sandbox title mean there’s an unread reply. Read it with `t` or attach to clear the marker. In reply and diff views, use `j`/`k` to scroll, `Space`/`PgDown` to page down, and `Esc` to close. In a diff, `[`/`]` move between files.
@@ -89,6 +90,8 @@ An orange **●** and bold sandbox title mean there’s an unread reply. Read it
 ## Customize your workflow
 
 **Default kits.** Press `K` to set the kits every new sandbox in the current project starts with. Each reference (a directory, ZIP, git URL or OCI image) must be a mixin, and is passed to `sbx run` as its own `--kit`. The New sandbox form starts with the project's kits filled in, so you can add or drop kits for one sandbox. Changing the defaults doesn't touch existing sandboxes. The Setup tab shows the kits each sandbox was created with.
+
+**Ports.** Press `P` to forward a port on your machine to the sandbox with `sbx ports --publish`. Type it as `[[HOST_IP:]HOST_PORT:]SANDBOX_PORT[/PROTOCOL]`; a lone number such as `3000` uses the same port on both sides. Press `U` and give a host port to stop forwarding it. The Setup tab lists the published ports. To reach a port from your phone or another device, publish it as `0.0.0.0:3000:3000` and have the server in the sandbox listen on `0.0.0.0`.
 
 **MCP servers.** The New sandbox form lists the MCP servers registered on your host (`sbx mcp ls --json`). Move along the row with ←→ and press space to pick a server; picked servers are passed to `sbx run` as `--static-mcp`. sbx fixes that set when the sandbox is created, so it can't be changed later from here. Servers that can't connect yet show why (for example "needs auth"), and the form names the command that fixes the one under the cursor. Register servers with `sbx mcp add` on your host. The form starts with the servers you last picked in the project, and the Setup tab shows the ones each sandbox was created with.
 
