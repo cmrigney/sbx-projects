@@ -71,3 +71,50 @@ func TestFailedCallLogsAllOfStderr(t *testing.T) {
 		t.Errorf("log has the script:\n%s", got)
 	}
 }
+
+func TestParsePortRoundTrips(t *testing.T) {
+	for spec, want := range map[string]Port{
+		"3000":                    {SandboxPort: 3000},
+		"8080:3000":               {HostPort: 8080, SandboxPort: 3000},
+		"127.0.0.1:8080:3000/udp": {HostIP: "127.0.0.1", HostPort: 8080, SandboxPort: 3000, Protocol: "udp"},
+		"[::1]:8080:3000/tcp6":    {HostIP: "::1", HostPort: 8080, SandboxPort: 3000, Protocol: "tcp6"},
+	} {
+		got, err := ParsePort(spec)
+		if err != nil || got != want {
+			t.Errorf("ParsePort(%q) = %+v, %v; want %+v", spec, got, err, want)
+		}
+		if got.Spec() != spec {
+			t.Errorf("Spec() = %q, want %q", got.Spec(), spec)
+		}
+	}
+	if got := (Port{HostIP: "0.0.0.0", SandboxPort: 3000}).Spec(); got != "0.0.0.0:3000:3000" {
+		t.Errorf("Spec() with only a host IP = %q, want 0.0.0.0:3000:3000", got)
+	}
+	for _, bad := range []string{"", "x", "0", "70000", "1:2:3:4", "8080:3000/sctp", "[::1]:3000", "[::1:8080:3000"} {
+		if p, err := ParsePort(bad); err == nil {
+			t.Errorf("ParsePort(%q) = %+v, want an error", bad, p)
+		}
+	}
+}
+
+func TestPortsPassTheSpec(t *testing.T) {
+	dir := t.TempDir()
+	argv := filepath.Join(dir, "argv")
+	bin := filepath.Join(dir, "sbx")
+	if err := os.WriteFile(bin, []byte("#!/bin/sh\nprintf '%s\\n' \"$@\" >> "+argv+"\n"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	c := NewCLI(bin)
+	p := Port{HostPort: 8080, SandboxPort: 3000, Protocol: "tcp"}
+	if err := c.PublishPort(context.Background(), "box", p); err != nil {
+		t.Fatal(err)
+	}
+	if err := c.UnpublishPort(context.Background(), "box", p); err != nil {
+		t.Fatal(err)
+	}
+	b, _ := os.ReadFile(argv)
+	want := "ports box --publish 8080:3000/tcp ports box --unpublish 8080:3000/tcp"
+	if got := strings.Join(strings.Fields(string(b)), " "); got != want {
+		t.Fatalf("argv = %q, want %q", got, want)
+	}
+}

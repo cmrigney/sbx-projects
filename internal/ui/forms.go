@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"slices"
+	"strconv"
 	"strings"
 	"time"
 
@@ -600,6 +601,80 @@ func (m *Model) openInstruct() tea.Cmd {
 	return nil
 }
 
+func (m *Model) openPublish() tea.Cmd {
+	it, ok := m.selItem()
+	if !ok || it.busy != "" {
+		return nil
+	}
+	name := it.name()
+	m.prompt = &promptForm{
+		title: "Publish a port of " + name, label: "Port, as [[HOST_IP:]HOST_PORT:]SANDBOX_PORT[/PROTOCOL]",
+		help:   "Forwards a port on this machine to the sandbox with sbx ports --publish. A lone number uses the same port on both sides, so 3000 serves the sandbox's port 3000 at localhost:3000. Protocols are " + strings.Join(sbx.Protocols, ", ") + ".",
+		action: "Publish", field: newField(""),
+		submit: func(text string) tea.Cmd {
+			if strings.TrimSpace(text) == "" {
+				return nil
+			}
+			p, err := sbx.ParsePort(text)
+			if err != nil {
+				return m.say(err.Error(), cWarn)
+			}
+			m.prompt = nil
+			steps := m.svc.PublishPort(name, p)
+			host := p.HostPort
+			if host == 0 {
+				host = p.SandboxPort
+			}
+			return m.run(name, steps, nil, fmt.Sprintf("Published port %d → %d for %s", host, p.SandboxPort, name))
+		},
+	}
+	return nil
+}
+
+func (m *Model) openUnpublish() tea.Cmd {
+	it, ok := m.selItem()
+	if !ok || it.busy != "" {
+		return nil
+	}
+	if len(it.live.Ports) == 0 {
+		return m.say(it.name()+" has no published ports", cWarn)
+	}
+	name, published := it.name(), it.live.Ports
+	var list []string
+	for _, p := range published {
+		list = append(list, p.String())
+	}
+	initial := ""
+	if len(published) == 1 {
+		initial = strconv.Itoa(published[0].HostPort)
+	}
+	m.prompt = &promptForm{
+		title: "Unpublish a port of " + name, label: "Host port to stop forwarding",
+		help:   "Published: " + strings.Join(list, ", ") + ". Add /PROTOCOL to pick one protocol when a port has several.",
+		action: "Unpublish", field: newField(initial),
+		submit: func(text string) tea.Cmd {
+			if strings.TrimSpace(text) == "" {
+				return nil
+			}
+			want, err := sbx.ParsePort(text)
+			if err != nil {
+				return m.say(err.Error(), cWarn)
+			}
+			// A lone number is the host port, as that is what was published.
+			if want.HostPort == 0 {
+				want.HostPort, want.SandboxPort = want.SandboxPort, 0
+			}
+			ports := core.MatchPorts(published, want)
+			if len(ports) == 0 {
+				return m.say(fmt.Sprintf("%s doesn't publish port %d", name, want.HostPort), cWarn)
+			}
+			m.prompt = nil
+			return m.run(name, m.svc.UnpublishPort(name, ports...), nil, fmt.Sprintf("Unpublished port %d of %s", want.HostPort, name))
+		},
+	}
+	return nil
+}
+
 func (m *Model) promptLines(w int) []Line {
 	p := m.prompt
 	out := []Line{L(B("› ", cAcc), B(p.label, cAcc)), p.field.line(w, true, nil), L()}
@@ -799,6 +874,10 @@ func (m *Model) onKey(k tea.KeyPressMsg) tea.Cmd {
 		return m.toggleLayout()
 	case "e":
 		return m.openEditor()
+	case "P", "shift+p":
+		return m.openPublish()
+	case "U", "shift+u":
+		return m.openUnpublish()
 	case "A", "shift+a":
 		m.openAddProject()
 	case "K", "shift+k":

@@ -69,6 +69,43 @@ func (s *Service) Remove(name string, running bool) []Step {
 	}}}
 }
 
+// PublishPort forwards a host port to the sandbox. Without a host port, the
+// sandbox's own port number is used on the host too.
+func (s *Service) PublishPort(name string, p sbx.Port) []Step {
+	if p.HostPort == 0 {
+		p.HostPort = p.SandboxPort
+	}
+	be := s.Backend
+	return []Step{{Busy: fmt.Sprintf("Publishing port %d", p.HostPort), Verb: "Publishing a port on", Run: func(ctx context.Context) (string, error) {
+		return "", be.PublishPort(ctx, name, p)
+	}}}
+}
+
+// UnpublishPort stops forwarding ports the sandbox has published.
+func (s *Service) UnpublishPort(name string, ports ...sbx.Port) []Step {
+	be := s.Backend
+	var steps []Step
+	for _, p := range ports {
+		steps = append(steps, Step{Busy: fmt.Sprintf("Unpublishing port %d", p.HostPort), Verb: "Unpublishing a port on", Run: func(ctx context.Context) (string, error) {
+			return "", be.UnpublishPort(ctx, name, p)
+		}})
+	}
+	return steps
+}
+
+// MatchPorts finds the published ports with want's host port. Its other
+// fields narrow the match when they are set.
+func MatchPorts(published []sbx.Port, want sbx.Port) []sbx.Port {
+	var out []sbx.Port
+	for _, p := range published {
+		if p.HostPort == want.HostPort && (want.SandboxPort == 0 || p.SandboxPort == want.SandboxPort) &&
+			(want.Protocol == "" || p.Protocol == want.Protocol) && (want.HostIP == "" || p.HostIP == want.HostIP) {
+			out = append(out, p)
+		}
+	}
+	return out
+}
+
 // Send gives the agent text to act on. A stopped sandbox is started, and
 // an agent that isn't running is started with the text as its first
 // instruction.
