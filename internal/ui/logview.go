@@ -1,6 +1,7 @@
 package ui
 
 import (
+	"fmt"
 	"log/slog"
 	"strings"
 
@@ -15,6 +16,7 @@ type logView struct {
 	sc       int
 	follow   bool
 	errsOnly bool
+	copied   bool
 }
 
 func (l *logView) scroll(d int) {
@@ -27,6 +29,7 @@ func (l *logView) scroll(d int) {
 func (m *Model) logKey(key string) tea.Cmd {
 	l := m.log
 	page := max(1, m.h-8)
+	l.copied = false
 	switch key {
 	case "esc", "q", "L", "shift+l":
 		m.log = nil
@@ -44,8 +47,38 @@ func (m *Model) logKey(key string) tea.Cmd {
 		l.follow = true
 	case "e":
 		l.errsOnly, l.follow = !l.errsOnly, true
+	case "c":
+		if m.logs == nil {
+			return nil
+		}
+		l.copied = true
+		return tea.SetClipboard(m.logText())
 	}
 	return nil
+}
+
+// logText is the entries the log view shows, as plain text for the
+// clipboard.
+func (m *Model) logText() string {
+	var sb strings.Builder
+	for _, e := range m.logs() {
+		if m.log.errsOnly && e.Level < slog.LevelWarn {
+			continue
+		}
+		fmt.Fprintf(&sb, "%s %-5s %s\n", e.Time.Format("2006-01-02 15:04:05"), e.Level, e.Msg)
+		for _, a := range e.Attrs {
+			v := strings.TrimRight(strings.ReplaceAll(a.Value, "\r", ""), "\n")
+			if !strings.Contains(v, "\n") {
+				fmt.Fprintf(&sb, "    %s  %s\n", a.Key, v)
+				continue
+			}
+			fmt.Fprintf(&sb, "    %s\n", a.Key)
+			for _, vl := range strings.Split(v, "\n") {
+				fmt.Fprintf(&sb, "      %s\n", vl)
+			}
+		}
+	}
+	return sb.String()
 }
 
 func (m *Model) drawLog(b *Buf) {

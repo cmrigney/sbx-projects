@@ -743,7 +743,11 @@ func (m *Model) hints() []keyHint {
 		if m.log.errsOnly {
 			filter = "Everything"
 		}
-		return []keyHint{{"j/k", "Scroll", nil}, {"e", filter, func() tea.Cmd { return m.logKey("e") }}, {"esc", "Close", m.closeOverlay}}
+		copyLabel := "Copy"
+		if m.log.copied {
+			copyLabel = "Copied"
+		}
+		return []keyHint{{"j/k", "Scroll", nil}, {"e", filter, func() tea.Cmd { return m.logKey("e") }}, {"c", copyLabel, func() tea.Cmd { return m.logKey("c") }}, {"esc", "Close", m.closeOverlay}}
 	case m.modal != nil:
 		choose := keyHint{"←→", "Choose", nil}
 		switch m.modal.f {
