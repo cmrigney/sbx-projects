@@ -587,6 +587,12 @@ func TestLogOpensInAnOverlay(t *testing.T) {
 	if v := plain(); !strings.Contains(v, "sbx failed") || strings.Contains(v, "sbx ran") || !strings.Contains(v, "warnings and errors") {
 		t.Fatal("e should show only warnings and errors")
 	}
+	if m.onKey(tea.KeyPressMsg{Code: 'c', Text: "c"}) == nil || !strings.Contains(plain(), "Copied") {
+		t.Fatal("c should copy the log")
+	}
+	if got := m.logText(); !strings.Contains(got, "ERROR sbx failed\n    args  [exec -i claude-a bash -s]\n    stdout\n      @@branch\n") || strings.Contains(got, "sbx ran") {
+		t.Fatalf("copied text should be the filtered entries, got %q", got)
+	}
 	m.onKey(tea.KeyPressMsg{Code: tea.KeyEscape})
 	if m.log != nil {
 		t.Fatal("esc should close the log")
