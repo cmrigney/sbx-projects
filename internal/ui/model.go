@@ -192,6 +192,10 @@ type (
 	listMsg struct {
 		sbxs []sbx.Sandbox
 		err  error
+		// poll is set on the polling chain's own listings. Only those
+		// schedule the next tick, so a one-off refresh never starts a
+		// second chain.
+		poll bool
 	}
 	probeMsg struct {
 		name string
@@ -225,20 +229,30 @@ type (
 )
 
 func (m *Model) Init() tea.Cmd {
-	return tea.Batch(m.listCmd(), tick(spinEvery, spinTick{}), tea.RequestBackgroundColor)
+	return tea.Batch(m.pollCmd(), tick(spinEvery, spinTick{}), tea.RequestBackgroundColor)
 }
 
 func tick(d time.Duration, msg tea.Msg) tea.Cmd {
 	return tea.Tick(d, func(time.Time) tea.Msg { return msg })
 }
 
+// listCmd refreshes the list once.
 func (m *Model) listCmd() tea.Cmd {
+	return m.list(false)
+}
+
+// pollCmd lists and then schedules the next poll.
+func (m *Model) pollCmd() tea.Cmd {
+	return m.list(true)
+}
+
+func (m *Model) list(poll bool) tea.Cmd {
 	be := m.be
 	return func() tea.Msg {
 		ctx, cancel := context.WithTimeout(context.Background(), 20*time.Second)
 		defer cancel()
 		s, err := be.List(ctx)
-		return listMsg{s, err}
+		return listMsg{s, err, poll}
 	}
 }
 
@@ -297,12 +311,15 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.spin++
 		return m, tick(spinEvery, spinTick{})
 	case listTick:
-		return m, m.listCmd()
+		return m, m.pollCmd()
 	case clearMsg:
 		if msg.id == m.msgID {
 			m.msg = ""
 		}
 	case listMsg:
+		if !msg.poll {
+			return m, m.onList(msg)
+		}
 		return m, tea.Batch(m.onList(msg), tick(listEvery, listTick{}))
 	case probeMsg:
 		m.onProbe(msg)

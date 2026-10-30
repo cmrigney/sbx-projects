@@ -655,3 +655,34 @@ func TestAddProjectClonesAURL(t *testing.T) {
 		t.Fatal("the New sandbox form should open")
 	}
 }
+
+func TestOneOffListDoesNotStartAnotherPoll(t *testing.T) {
+	m, _ := newTestModel(t)
+	_, cmd := m.Update(m.listCmd()())
+	if hasListTick(cmd) {
+		t.Fatal("a one-off refresh scheduled a poll; each would add a polling chain")
+	}
+	_, cmd = m.Update(m.pollCmd()())
+	if !hasListTick(cmd) {
+		t.Fatal("the poll should schedule the next one")
+	}
+}
+
+// hasListTick reports whether cmd, run through any batches, schedules a
+// listTick. Ticks wait listEvery, which tests set to a millisecond.
+func hasListTick(cmd tea.Cmd) bool {
+	if cmd == nil {
+		return false
+	}
+	switch msg := cmd().(type) {
+	case tea.BatchMsg:
+		for _, c := range msg {
+			if hasListTick(c) {
+				return true
+			}
+		}
+	case listTick:
+		return true
+	}
+	return false
+}
