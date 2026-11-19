@@ -227,18 +227,18 @@ func TestNewSandboxRemembersModelsByAgent(t *testing.T) {
 	if m.modal.f != fModel {
 		t.Fatal("codex should have a model row")
 	}
-	m.modal.model = "gpt-6.1-sol"
+	m.modal.model = "sol"
 	m.modal.value.insert("feat/codex")
 	drain(m, m.create(m.modal))
-	if rec := m.recs["codex-codex"]; rec.ClaudeModel != "" || rec.CodexModel != "gpt-6.1-sol" {
+	if rec := m.recs["codex-codex"]; rec.ClaudeModel != "" || rec.CodexModel != "sol" {
 		t.Fatalf("codex record models: %+v", rec)
 	}
-	if m.cur().ClaudeModel != "opus" || m.cur().CodexModel != "gpt-6.1-sol" {
+	if m.cur().ClaudeModel != "opus" || m.cur().CodexModel != "sol" {
 		t.Fatalf("project models: %+v", m.cur())
 	}
 	m.openNew()
 	m.modal.setAgent("codex")
-	if m.modal.model != "gpt-6.1-sol" {
+	if m.modal.model != "sol" {
 		t.Fatalf("codex form should start with the last pick, got %q", m.modal.model)
 	}
 }
@@ -594,6 +594,12 @@ func TestLogOpensInAnOverlay(t *testing.T) {
 	m.onKey(tea.KeyPressMsg{Code: 'e', Text: "e"})
 	if v := plain(); !strings.Contains(v, "sbx failed") || strings.Contains(v, "sbx ran") || !strings.Contains(v, "warnings and errors") {
 		t.Fatal("e should show only warnings and errors")
+	}
+	if m.onKey(tea.KeyPressMsg{Code: 'c', Text: "c"}) == nil || !strings.Contains(plain(), "Copied") {
+		t.Fatal("c should copy the log")
+	}
+	if got := m.logText(); !strings.Contains(got, "ERROR sbx failed\n    args  [exec -i claude-a bash -s]\n    stdout\n      @@branch\n") || strings.Contains(got, "sbx ran") {
+		t.Fatalf("copied text should be the filtered entries, got %q", got)
 	}
 	m.onKey(tea.KeyPressMsg{Code: tea.KeyEscape})
 	if m.log != nil {

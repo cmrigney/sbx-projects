@@ -310,13 +310,16 @@ tmux -L %[1]s send-keys -t %[2]s Enter
 // defaultBranch, which is only the host's guess and goes stale when its
 // origin/HEAD does. It doesn't track the default branch, so a later push
 // goes to a branch of its own name. An empty value checks out the default
-// branch itself. Every source also points origin/HEAD at the remote's HEAD,
-// since the clone inherits the host's and agents read it to pick a PR base.
+// branch itself. A PR resets any local branch of the same name to the PR's
+// head: the clone inherits the host's branches, and a stale one that has
+// diverged, as after a force push, would otherwise fail the fast-forward.
+// Every source also points origin/HEAD at the remote's HEAD, since the
+// clone inherits the host's and agents read it to pick a PR base.
 func GitSetupScript(source, value, defaultBranch string) string {
 	enc := base64.StdEncoding.EncodeToString([]byte(value))
 	switch source {
 	case "pr":
-		return fmt.Sprintf("set -e\nv=$(printf '%%s' '%s' | base64 -d)\n%sgh pr checkout \"$v\" >&2\ngit branch --show-current\n", enc, syncRemoteHead)
+		return fmt.Sprintf("set -e\nv=$(printf '%%s' '%s' | base64 -d)\n%sgh pr checkout --force \"$v\" >&2\ngit branch --show-current\n", enc, syncRemoteHead)
 	default:
 		return fmt.Sprintf(`set -e
 v=$(printf '%%s' '%s' | base64 -d)

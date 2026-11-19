@@ -146,7 +146,7 @@ type newForm struct {
 
 func newSandboxForm(p *store.Project) *newForm {
 	f := &newForm{project: p, f: fValue, src: "branch", agent: "claude", model: p.ClaudeModel,
-		models: map[string]string{"claude": p.ClaudeModel, "codex": p.CodexModel}, ws: "clone", value: newField(""),
+		models: map[string]string{"claude": p.ClaudeModel, "codex": core.PickedModel("codex", p.CodexModel)}, ws: "clone", value: newField(""),
 		kits: newField(strings.Join(p.Kits, " ")), task: newField(""), picked: map[string]bool{}}
 	for _, n := range p.MCPs {
 		f.picked[n] = true
