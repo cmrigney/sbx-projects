@@ -219,18 +219,18 @@ func TestNewSandboxRemembersModelsByAgent(t *testing.T) {
 	if m.modal.f != fModel {
 		t.Fatal("codex should have a model row")
 	}
-	m.modal.model = "gpt-6.1-sol"
+	m.modal.model = "sol"
 	m.modal.value.insert("feat/codex")
 	drain(m, m.create(m.modal))
-	if rec := m.recs["codex-codex"]; rec.ClaudeModel != "" || rec.CodexModel != "gpt-6.1-sol" {
+	if rec := m.recs["codex-codex"]; rec.ClaudeModel != "" || rec.CodexModel != "sol" {
 		t.Fatalf("codex record models: %+v", rec)
 	}
-	if m.cur().ClaudeModel != "opus" || m.cur().CodexModel != "gpt-6.1-sol" {
+	if m.cur().ClaudeModel != "opus" || m.cur().CodexModel != "sol" {
 		t.Fatalf("project models: %+v", m.cur())
 	}
 	m.openNew()
 	m.modal.setAgent("codex")
-	if m.modal.model != "gpt-6.1-sol" {
+	if m.modal.model != "sol" {
 		t.Fatalf("codex form should start with the last pick, got %q", m.modal.model)
 	}
 }

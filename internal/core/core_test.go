@@ -64,12 +64,28 @@ func TestSandboxName(t *testing.T) {
 }
 
 func TestModels(t *testing.T) {
-	if ModelLabel("codex", "gpt-6-luna") != "GPT-6 Luna" || ModelLabel("claude", "") != "Default" || ModelLabel("shell", "x") != "x" {
+	if ModelLabel("codex", "luna") != "Luna" || ModelLabel("claude", "") != "Default" || ModelLabel("shell", "x") != "x" {
 		t.Fatal("labels")
 	}
-	rec := &store.Sandbox{Agent: "codex", ClaudeModel: "opus", CodexModel: "gpt-6-luna"}
-	if SandboxModel(rec) != "gpt-6-luna" {
-		t.Fatalf("codex should start with its own model, got %q", SandboxModel(rec))
+	if ModelLabel("codex", "gpt-6.1-sol") != "Sol" || PickedModel("codex", "gpt-6.1-sol") != "sol" {
+		t.Fatal("a versioned pick from before families should read as its family")
+	}
+	rec := &store.Sandbox{Agent: "codex", ClaudeModel: "opus", CodexModel: "sol"}
+	if SandboxModel(rec) != codexLatest["sol"] {
+		t.Fatalf("codex should start with its family's latest model, got %q", SandboxModel(rec))
+	}
+	rec.CodexModel = "gpt-6.1-sol"
+	if SandboxModel(rec) != codexLatest["sol"] {
+		t.Fatalf("an old versioned pick should move to its family's latest, got %q", SandboxModel(rec))
+	}
+	rec.CodexModel = "gpt-7-nova"
+	if SandboxModel(rec) != "gpt-7-nova" {
+		t.Fatal("an unknown model should pass through")
+	}
+	for _, m := range CodexModels[1:] {
+		if codexLatest[m.ID] == "" {
+			t.Fatalf("family %q has no latest model", m.ID)
+		}
 	}
 	rec.Agent = "shell"
 	if SandboxModel(rec) != "" {
@@ -80,11 +96,11 @@ func TestModels(t *testing.T) {
 func TestCreateRunsTheWholeChain(t *testing.T) {
 	s, mock, p := newTestService(t, nil)
 	rec, steps, err := s.Create(&p, CreateRequest{Agent: "codex", Source: "pr", Value: "#12", Clone: true,
-		Model: "gpt-6-luna", MCPs: []string{"notion"}, RememberMCPs: true}, nil)
+		Model: "luna", MCPs: []string{"notion"}, RememberMCPs: true}, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if rec.Name != "codex-pr-12" || rec.Title != "Review PR #12" || rec.CodexModel != "gpt-6-luna" {
+	if rec.Name != "codex-pr-12" || rec.Title != "Review PR #12" || rec.CodexModel != "luna" {
 		t.Fatalf("record = %+v", rec)
 	}
 	if len(steps) != 3 {
@@ -101,7 +117,7 @@ func TestCreateRunsTheWholeChain(t *testing.T) {
 		t.Fatalf("a PR review with no task should get the review prompt:\n%s", out)
 	}
 	ps, _ := s.Store.Projects()
-	if ps[0].CodexModel != "gpt-6-luna" || strings.Join(ps[0].MCPs, ",") != "notion" || p.CodexModel != "gpt-6-luna" {
+	if ps[0].CodexModel != "luna" || strings.Join(ps[0].MCPs, ",") != "notion" || p.CodexModel != "luna" {
 		t.Fatalf("the project should remember the picks: %+v", ps[0])
 	}
 	recs, _ := s.Store.Sandboxes()
