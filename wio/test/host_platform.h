@@ -57,7 +57,7 @@ class HostTransport : public Transport {
 
 class HostPlatform : public Platform {
  public:
-  uint16_t fb[240][320];
+  uint16_t fb[240][320] = {};
   std::deque<Input> keys;
   Config saved{};
   bool hasSaved = false;
@@ -71,8 +71,8 @@ class HostPlatform : public Platform {
   void random(uint8_t *buf, size_t len) override {
     if (getrandom(buf, len, 0) != (ssize_t)len) abort();
   }
-  void pushStrip(int y, const uint16_t *pixels) override {
-    for (int r = 0; r < 8; r++) memcpy(fb[y + r], pixels + r * 320, 640);
+  void pushStrip(int y, uint16_t *pixels) override {
+    for (int r = 0; r < 13; r++) memcpy(fb[y + r], pixels + r * 320, 640);
   }
   bool poll(Input &out) override {
     if (keys.empty()) return false;

@@ -149,7 +149,10 @@ class WioPlatform : public Platform {
     }
   }
 
-  void pushStrip(int y, const uint16_t *pixels) override {
+  void pushStrip(int y, uint16_t *pixels) override {
+    // The panel takes the high byte first. On the SAMD51 this library sends memory as it is and
+    // ignores setSwapBytes, so the bytes are swapped here.
+    for (int i = 0; i < STRIP_W * STRIP_H; i++) pixels[i] = __builtin_bswap16(pixels[i]);
     tft.pushImage(0, y, STRIP_W, STRIP_H, pixels);
   }
 
@@ -276,7 +279,6 @@ void setup() {
   for (const Button &b : buttons) pinMode(b.pin, INPUT_PULLUP);
   tft.begin();
   tft.setRotation(3);
-  tft.setSwapBytes(true);
   bootScreen("sbx-projects", "Starting Bluetooth");
 
   // Before Bluetooth starts: changing the Wi-Fi mode restarts the radio they share, which would

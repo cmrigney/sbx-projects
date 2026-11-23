@@ -5,11 +5,11 @@
 #include <stddef.h>
 #include <stdint.h>
 
-static const int GRID_COLS = 53;
-static const int GRID_ROWS = 30;
+static const int GRID_COLS = 45;
+static const int GRID_ROWS = 18;
 static const int TERM_ROWS = GRID_ROWS - 1;
 
-enum : uint8_t { CELL_UNDERLINE = 1, CELL_WIDE_TAIL = 2 };
+enum : uint8_t { CELL_UNDERLINE = 1, CELL_WIDE_TAIL = 2, CELL_BOLD = 4 };
 
 struct __attribute__((packed)) Cell {
   uint16_t ch;
@@ -30,9 +30,9 @@ constexpr uint16_t rgb565(uint8_t r, uint8_t g, uint8_t b) {
   return (uint16_t)((r & 0xF8) << 8 | (g & 0xFC) << 3 | b >> 3);
 }
 
-static const uint16_t VT_DEFAULT_FG = rgb565(0xE4, 0xEF, 0xEC);
-static const uint16_t VT_DEFAULT_BG = rgb565(0x0A, 0x14, 0x1D);
-static const uint16_t VT_CARET = rgb565(0x85, 0xE8, 0xCD);
+static const uint16_t VT_DEFAULT_FG = rgb565(0xF2, 0xF2, 0xF2);
+static const uint16_t VT_DEFAULT_BG = rgb565(0x10, 0x10, 0x10);
+static const uint16_t VT_CARET = rgb565(0xD7, 0x77, 0x57);  // Claude orange
 
 // Columns a character takes in the terminal, as tmux counts them.
 int charWidth(uint32_t cp);

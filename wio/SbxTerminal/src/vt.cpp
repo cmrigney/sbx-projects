@@ -3,10 +3,10 @@
 #include <stdio.h>
 #include <string.h>
 
-// The 16 ANSI colours of the iOS and web terminals.
+// A dark palette built from Claude Code's dark theme, so ANSI colours sit well beside its own.
 static const uint32_t kAnsi[16] = {
-    0x101E2B, 0xFF7B6E, 0x6FDC9A, 0xF5B94A, 0x7CC4FF, 0xD3A6FF, 0x85E8CD, 0xE4EFEC,
-    0x5F7787, 0xFF9D93, 0x94E8B5, 0xFFD07A, 0xA5D6FF, 0xE2C2FF, 0xB0F2DF, 0xFFFFFF,
+    0x2A2A2A, 0xFF6B80, 0x4EBA65, 0xFFC107, 0x7F8FF5, 0xAF87FF, 0x48B8AC, 0xD8D8D8,
+    0x8A8A8A, 0xFF8FA0, 0x7AD98F, 0xFFD75F, 0xB1B9F9, 0xCDB2FF, 0x7FDCD2, 0xFFFFFF,
 };
 
 static uint16_t paletteColor(int i) {
@@ -23,7 +23,8 @@ static uint16_t paletteColor(int i) {
   return rgb565(v, v, v);
 }
 
-static uint16_t dimmed(uint16_t c) { return (c >> 1) & 0x7BEF; }
+// Three quarters of the brightness: half is unreadable on this panel.
+static uint16_t dimmed(uint16_t c) { return ((c >> 1) & 0x7BEF) + ((c >> 2) & 0x39E7); }
 
 void Grid::fill(uint16_t fg, uint16_t bg) {
   for (int r = 0; r < GRID_ROWS; r++) {
@@ -701,7 +702,7 @@ void Vt::print(uint32_t cp) {
   if (hidden_) fg = bg;
 
   const uint16_t ch = cp > 0xFFFF ? 0xFFFD : (uint16_t)cp;
-  const uint8_t flags = underline_ ? CELL_UNDERLINE : 0;
+  const uint8_t flags = (underline_ ? CELL_UNDERLINE : 0) | (bold_ ? CELL_BOLD : 0);
   Cell *l = line(row_);
   // Overwriting half of a wide character blanks its other half.
   if (l[col_].flags & CELL_WIDE_TAIL && col_ > 0) l[col_ - 1].ch = ' ';

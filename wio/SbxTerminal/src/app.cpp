@@ -8,14 +8,15 @@
 
 // The apps' dark theme.
 static const uint16_t C_BG = VT_DEFAULT_BG;
-static const uint16_t C_PANEL = rgb565(0x10, 0x1E, 0x2B);
-static const uint16_t C_SELECT = rgb565(0x1A, 0x4A, 0x45);
+static const uint16_t C_PANEL = rgb565(0x26, 0x26, 0x26);
+static const uint16_t C_SELECT = rgb565(0x4A, 0x2E, 0x24);
+static const uint16_t C_FIELD = rgb565(0x2C, 0x2C, 0x2C);
 static const uint16_t C_TEXT = VT_DEFAULT_FG;
-static const uint16_t C_MUTED = rgb565(0x8A, 0xA2, 0xB2);
+static const uint16_t C_MUTED = rgb565(0xB0, 0xB0, 0xB0);
 static const uint16_t C_ACCENT = VT_CARET;
-static const uint16_t C_OK = rgb565(0x6F, 0xDC, 0x9A);
-static const uint16_t C_WARN = rgb565(0xF5, 0xB9, 0x4A);
-static const uint16_t C_FAIL = rgb565(0xFF, 0x7B, 0x6E);
+static const uint16_t C_OK = rgb565(0x4E, 0xBA, 0x65);
+static const uint16_t C_WARN = rgb565(0xFF, 0xC1, 0x07);
+static const uint16_t C_FAIL = rgb565(0xFF, 0x6B, 0x80);
 
 static const int LIST_TOP = 1;
 static const int LIST_BOTTOM = GRID_ROWS - 2;  // the last row holds the key hints
@@ -999,7 +1000,7 @@ void App::flush() {
   for (int r = 0; bits; r++, bits >>= 1) {
     if (!(bits & 1)) continue;
     renderRow(g->cells[r], r == cursorRow && blinkOn_ ? cursorCol : -1, strip_);
-    p_.pushStrip(r * STRIP_H, strip_);
+    p_.pushStrip(SCREEN_TOP + r * STRIP_H, strip_);
   }
 }
 
@@ -1042,7 +1043,7 @@ void App::drawWifi() {
     const bool on = i == sel_;
     const uint16_t bg = on ? C_SELECT : C_BG;
     for (int c = 0; c < GRID_COLS; c++) gridA_.put(row, c, ' ', C_TEXT, bg);
-    text(row, 1, networks_[i].ssid, C_TEXT, bg, 36);
+    text(row, 1, networks_[i].ssid, C_TEXT, bg, GRID_COLS - 11);
     char right[16];
     snprintf(right, sizeof(right), "%s%4d", networks_[i].open ? "open" : "", networks_[i].rssi);
     text(row, GRID_COLS - 1 - strlen(right), right, C_MUTED, bg, 12);
@@ -1184,7 +1185,7 @@ void App::drawForm(const char *title) {
           const int at = start + c;
           const char ch = at < len ? (secret ? '*' : f.text[at]) : ' ';
           const bool isCursor = on && at == cur;
-          gridA_.put(row, x + c, (uint8_t)ch, isCursor ? bg : C_TEXT, isCursor ? C_ACCENT : C_PANEL);
+          gridA_.put(row, x + c, (uint8_t)ch, isCursor ? bg : C_TEXT, isCursor ? C_ACCENT : C_FIELD);
         }
       } else if (f.type == F_TOGGLE) {
         const int after = text(row, x, f.on ? "[x]" : "[ ]", f.on ? C_OK : C_MUTED, bg, 3);
@@ -1205,14 +1206,14 @@ void App::drawConfirm() {
   char hex[3];
   for (int i = 0; i < 16; i++) {
     snprintf(hex, sizeof(hex), "%02X", pendingFp_[i]);
-    const int row = 6 + i / 8 * 2;
-    const int col = 3 + (i % 8) * 6;
+    const int row = 5 + i / 8 * 2;
+    const int col = 10 + (i % 8) * 3;
     text(row, col, hex, C_ACCENT, C_BG, 2);
-    if (i % 8 != 7) text(row, col + 3, ":", C_MUTED, C_BG, 1);
+    if (i != 15) text(row, col + 2, ":", C_MUTED, C_BG, 1);
   }
-  text(12, 2, "It's on the line starting \"Certificate\".", C_MUTED, C_BG, GRID_COLS - 4);
-  text(14, 2, "If it differs, someone may be intercepting", C_WARN, C_BG, GRID_COLS - 4);
-  text(15, 2, "this connection. Don't continue.", C_WARN, C_BG, GRID_COLS - 4);
+  text(9, 2, "It's on the line starting \"Certificate\".", C_MUTED, C_BG, GRID_COLS - 4);
+  text(11, 2, "If not, someone may be intercepting", C_WARN, C_BG, GRID_COLS - 4);
+  text(12, 2, "this connection. Don't continue.", C_WARN, C_BG, GRID_COLS - 4);
 }
 
 static int wrapped(const char *s, int maxCols, int &offset) {
@@ -1226,10 +1227,10 @@ static int wrapped(const char *s, int maxCols, int &offset) {
 void App::drawClosed() {
   header(termName_);
   footer(canReattach_ ? "Enter attach again  Esc back" : "Enter back");
-  int offset = 0, row = 10;
+  int offset = 0, row = 6;
   const int total = strlen(closedText_);
   char line[GRID_COLS + 1];
-  while (offset < total && row < 20) {
+  while (offset < total && row < GRID_ROWS - 1) {
     const int n = wrapped(closedText_, GRID_COLS - 4, offset);
     memcpy(line, closedText_ + offset, n);
     line[n] = 0;
@@ -1260,10 +1261,10 @@ void App::drawSettings() {
 void App::drawNotice() {
   header("sbx-projects");
   footer("Enter continue");
-  int offset = 0, row = 10;
+  int offset = 0, row = 6;
   const int total = strlen(noticeText_);
   char line[GRID_COLS + 1];
-  while (offset < total && row < 20) {
+  while (offset < total && row < GRID_ROWS - 1) {
     const int n = wrapped(noticeText_, GRID_COLS - 4, offset);
     memcpy(line, noticeText_ + offset, n);
     line[n] = 0;

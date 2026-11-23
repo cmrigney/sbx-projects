@@ -80,8 +80,8 @@ class Platform {
   virtual void sleep(uint32_t ms) = 0;
   virtual void random(uint8_t *buf, size_t len) = 0;
 
-  // Draws a 320x8 strip at pixel row y.
-  virtual void pushStrip(int y, const uint16_t *pixels) = 0;
+  // Draws a 320x13 strip at pixel row y. It may change the buffer.
+  virtual void pushStrip(int y, uint16_t *pixels) = 0;
   virtual bool poll(Input &out) = 0;
 
   virtual Transport &transport() = 0;

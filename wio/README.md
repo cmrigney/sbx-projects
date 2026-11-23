@@ -1,6 +1,6 @@
 # sbx-projects on a Wio Terminal
 
-Browse projects and sandboxes, create sandboxes, and attach to them in a 53x29 terminal, typing on
+Browse projects and sandboxes, create sandboxes, and attach to them in a 45x17 terminal, typing on
 a Bluetooth keyboard.
 
 ## What you need
