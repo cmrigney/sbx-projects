@@ -50,6 +50,7 @@ class App {
     bool disabled;
   };
   static const int MAX_FIELDS = 12 + MAX_KITS + MAX_MCPS;
+  static const int DETAIL_ACTIONS = 4, DETAIL_DELETE = 3;
 
   Grid *activeGrid() const;
   void go(View v);
@@ -90,6 +91,7 @@ class App {
   void addKit();
   void submitNew();
   void sandboxAction(const char *verb);
+  void deleteSandbox();
 
   void attach(const char *name, bool shell);
   void pumpTerminal();
@@ -204,6 +206,7 @@ class App {
   // The terminal's 5-way menu, drawn over the bottom rows while the session keeps running.
   enum MenuRequest : uint8_t { REQ_NONE, REQ_COPY, REQ_REVIEW };
   bool menuOpen_ = false, menuDirty_ = false;
+  bool deleteArmed_ = false;  // Delete sandbox was pressed once
   uint8_t menuSel_ = 0;
   MenuRequest request_ = REQ_NONE;
   uint32_t requestAt_ = 0;

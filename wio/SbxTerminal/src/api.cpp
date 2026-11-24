@@ -189,17 +189,21 @@ bool Api::options(int64_t project, SandboxOptions &out) {
   }
   for (JsonVariant k : defaults["kits"].as<JsonArray>()) {
     if (out.kitCount == MAX_KITS) break;
-    copyStr(out.kits[out.kitCount], k.as<const char *>());
+    const char *ref = k.as<const char *>();
+    copyStr(out.kits[out.kitCount], ref);
+    out.kitTooLong[out.kitCount] = ref && strlen(ref) >= sizeof(out.kits[0]);
     out.kitPicked[out.kitCount++] = true;
   }
   if (doc["mcpServers"].is<JsonArray>()) {
     for (JsonObject m : doc["mcpServers"].as<JsonArray>()) {
       if (out.mcpCount == MAX_MCPS) break;
       McpOption &mcp = out.mcps[out.mcpCount++];
-      copyStr(mcp.name, m["name"] | "");
+      const char *fullName = m["name"] | "";
+      copyStr(mcp.name, fullName);
+      mcp.tooLong = strlen(fullName) >= sizeof(mcp.name);
       mcp.ready = m["ready"] | false;
       for (JsonVariant picked : defaults["mcps"].as<JsonArray>()) {
-        if (strcmp(picked.as<const char *>(), mcp.name) == 0) mcp.picked = true;
+        if (strcmp(picked.as<const char *>(), fullName) == 0) mcp.picked = true;
       }
     }
   } else {
@@ -234,6 +238,14 @@ bool Api::create(const NewSandbox &r, char *createdName, size_t cap) {
   deserializeJson(doc, http_, DeserializationOption::Filter(filter));
   http_.end();
   snprintf(createdName, cap, "%s", doc["name"] | "");
+  return true;
+}
+
+bool Api::remove(const char *name) {
+  char path[128];
+  sandboxPath(path, sizeof(path), name, "");
+  if (!begin("DELETE", path, nullptr, 202)) return false;
+  http_.end();
   return true;
 }
 

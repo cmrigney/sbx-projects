@@ -184,7 +184,8 @@ int main(int argc, char **argv) {
   r.shot("15-sandboxes-large");
   r.p.press(KEY_DOWN);  // past the sandbox made above, which is still being created
   r.p.press(KEY_ENTER);
-  CHECK(r.waitFor("Attach to agent") && r.shows("Stop sandbox"), "every action fits at the large size");
+  CHECK(r.waitFor("Attach to agent") && r.shows("Stop sandbox") && r.shows("Delete sandbox"),
+        "every action fits at the large size");
   r.shot("16-detail-large");
   r.p.press(KEY_ENTER);
   CHECK(r.waitFor("demo: sbx exec", 15000), "attaches at the large size");
@@ -360,6 +361,37 @@ int main(int argc, char **argv) {
   r.p.press(BTN_A);
   r.p.press(BTN_A);
   CHECK(r.waitFor("Attach to agent", 15000) && r.shows("claude-pr-4127-2"), "double-tapping A creates the review sandbox");
+
+  // Deleting takes a second press, and moving away first cancels it.
+  for (int i = 0; i < 3; i++) r.p.press(KEY_DOWN);
+  r.p.press(KEY_ENTER);
+  CHECK(r.waitFor("Press again to delete"), "asks for a second press to delete");
+  r.shot("26-delete-armed");
+  r.p.press(KEY_UP);
+  CHECK(r.waitFor("Delete sandbox") && !r.shows("Press again"), "moving away cancels the delete");
+  r.p.press(KEY_DOWN);
+  bool refused = false, deleted = false;
+  for (int i = 0; i < 30 && !deleted; i++) {
+    r.p.press(KEY_ENTER);
+    r.p.press(KEY_ENTER);
+    r.run(1000);
+    deleted = r.shows("Enter  C back");
+    if (!deleted && r.shows("is busy")) {  // the Mac is still making it
+      refused = true;
+      r.p.press(KEY_ENTER);
+      r.run(500);
+    }
+  }
+  CHECK(refused, "says why a busy sandbox can't be deleted yet");
+  CHECK(deleted, "deletes and goes back to the list");
+  bool gone = false;
+  for (int i = 0; i < 30 && !gone; i++) {
+    r.run(500);
+    r.p.press(BTN_A);  // refresh
+    r.run();
+    gone = !r.shows("claude-pr-4127-2");
+  }
+  CHECK(gone, "the deleted sandbox leaves the list");
 
   printf("%s\n", failures ? "FAILED" : "PASSED");
   return failures ? 1 : 0;

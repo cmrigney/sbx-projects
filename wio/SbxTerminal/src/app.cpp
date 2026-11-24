@@ -424,11 +424,21 @@ void App::submitNew() {
   r.task = task_;
   r.clone = pr || clone_;
   r.model = agent.modelCount ? agent.models[modelIndex_[agentIndex_]].id : "";
+  bool tooLong = false;
   for (int i = 0; i < options_.kitCount; i++) {
-    if (options_.kitPicked[i]) r.kits[r.kitCount++] = options_.kits[i];
+    if (!options_.kitPicked[i]) continue;
+    tooLong = tooLong || options_.kitTooLong[i];
+    r.kits[r.kitCount++] = options_.kits[i];
   }
   for (int i = 0; i < options_.mcpCount; i++) {
-    if (options_.mcps[i].picked) r.mcps[r.mcpCount++] = options_.mcps[i].name;
+    if (!options_.mcps[i].picked) continue;
+    tooLong = tooLong || options_.mcps[i].tooLong;
+    r.mcps[r.mcpCount++] = options_.mcps[i].name;
+  }
+  if (tooLong) {
+    snprintf(formError_, sizeof(formError_), "A kit or MCP name is too long. Turn it off.");
+    needsDraw_ = true;
+    return;
   }
   busy("Creating the sandbox");
   char created[48] = "";
@@ -442,6 +452,18 @@ void App::submitNew() {
   snprintf(detailName_, sizeof(detailName_), "%s", created);
   sel_ = top_ = 0;
   go(V_DETAIL);
+}
+
+// The list shows the sandbox as being removed until the Mac finishes.
+void App::deleteSandbox() {
+  busy("Deleting the sandbox");
+  if (!api_.remove(detailName_)) {
+    notice(api_.error(), V_DETAIL);
+    return;
+  }
+  loadSandboxes();
+  sel_ = top_ = 0;
+  go(V_SANDBOXES);
 }
 
 void App::sandboxAction(const char *verb) {
@@ -1135,14 +1157,23 @@ void App::handle(const Input &in) {
       }
       handleList(in, visibleSandboxCount());
       break;
-    case V_DETAIL:
+    case V_DETAIL: {
+      // Delete needs a second press, and anything else in between cancels it.
+      const bool armed = deleteArmed_;
+      deleteArmed_ = false;
+      if (armed) needsDraw_ = true;
       if (in.key == BTN_A || (in.key == KEY_TEXT && in.ch == 'r')) {
         loadSandboxes();
         go(V_DETAIL);
         return;
       }
-      handleList(in, 3);
+      if (isSelect(in.key) && sel_ == DETAIL_DELETE && !armed) {
+        deleteArmed_ = true;
+        return;
+      }
+      handleList(in, DETAIL_ACTIONS);
       break;
+    }
     case V_SETTINGS:
       if (sel_ == 0 && (in.key == KEY_LEFT || in.key == SW_LEFT)) {
         changeFont(-1);
@@ -1290,7 +1321,8 @@ void App::activate() {
       }
       if (sel_ == 0) attach(s->name, false);
       else if (sel_ == 1) attach(s->name, true);
-      else sandboxAction(s->running ? "stop" : "resume");
+      else if (sel_ == 2) sandboxAction(s->running ? "stop" : "resume");
+      else deleteSandbox();
       break;
     }
     case V_SETTINGS:
@@ -1681,14 +1713,17 @@ void App::drawDetail() {
   char changes[32];
   snprintf(changes, sizeof(changes), "%u files  +%u -%u", s->files, s->added, s->removed);
   line("Changes", changes, C_TEXT);
-  row++;
+  if (row + DETAIL_ACTIONS < gridRows - 1) row++;  // a gap, when the footer leaves room
 
-  const char *actions[3] = {"Attach to agent", "Open a shell", s->running ? "Stop sandbox" : "Resume sandbox"};
-  for (int i = 0; i < 3; i++, row++) {
+  const char *actions[DETAIL_ACTIONS] = {"Attach to agent", "Open a shell",
+                                         s->running ? "Stop sandbox" : "Resume sandbox",
+                                         deleteArmed_ ? "Press again to delete" : "Delete sandbox"};
+  for (int i = 0; i < DETAIL_ACTIONS; i++, row++) {
     const bool on = i == sel_;
     const uint16_t bg = on ? C_SELECT : C_BG;
     for (int c = 0; c < gridCols; c++) gridA_.put(row, c, ' ', C_TEXT, bg);
-    text(row, 2, actions[i], i == 0 ? C_ACCENT : C_TEXT, bg, gridCols - 4);
+    const uint16_t color = i == 0 ? C_ACCENT : i == DETAIL_DELETE ? C_FAIL : C_TEXT;
+    text(row, 2, actions[i], color, bg, gridCols - 4);
   }
 }
 

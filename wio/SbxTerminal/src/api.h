@@ -47,6 +47,7 @@ struct McpOption {
   char name[32];
   bool ready;
   bool picked;
+  bool tooLong;  // name is cut short, so sbx wouldn't recognize it
 };
 
 struct SandboxOptions {
@@ -54,8 +55,9 @@ struct SandboxOptions {
   uint8_t agentCount;
   uint8_t defaultAgent;
   bool defaultClone;
-  char kits[MAX_KITS][64];
+  char kits[MAX_KITS][192];  // references can be long git URLs
   bool kitPicked[MAX_KITS];
+  bool kitTooLong[MAX_KITS];  // cut short, so sbx wouldn't find it
   uint8_t kitCount;
   McpOption mcps[MAX_MCPS];
   uint8_t mcpCount;
@@ -91,6 +93,8 @@ class Api {
   bool options(int64_t project, SandboxOptions &out);
   bool create(const NewSandbox &req, char *createdName, size_t cap);
   bool action(const char *name, const char *verb);
+  // Removes the sandbox and its record, stopping it first if it's running.
+  bool remove(const char *name);
 
   const char *error() const { return error_; }
   bool unauthorized() const { return unauthorized_; }

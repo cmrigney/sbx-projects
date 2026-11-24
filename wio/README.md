@@ -1,7 +1,7 @@
 # sbx-projects on a Wio Terminal
 
-Browse projects and sandboxes, create sandboxes, and attach to them in a terminal of up to 45x17, typing on
-a Bluetooth keyboard.
+Browse projects and sandboxes, create, stop and delete sandboxes, and attach to them in a terminal of up to
+45x17, typing on a Bluetooth keyboard. **Delete sandbox** asks for a second press. Moving off it first cancels.
 
 ## What you need
 
