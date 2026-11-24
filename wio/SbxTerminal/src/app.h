@@ -190,4 +190,6 @@ class App {
   uint32_t lastTyped_ = 0, lastFooter_ = 0;
   bool aPending_ = false;  // A was tapped once and may be tapped again
   uint32_t aAt_ = 0;
+  bool bPending_ = false;  // B was tapped once in an agent's terminal
+  uint32_t bAt_ = 0;
 };

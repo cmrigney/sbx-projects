@@ -245,6 +245,39 @@ int main(int argc, char **argv) {
   r.p.press(KEY_ESC);
   CHECK(r.waitFor("Attach to agent"), "back at the sandbox after Ctrl+C");
 
+  // Double-tapping B is Esc in an agent's terminal, which the demo's tty echoes as ^[.
+  r.p.press(KEY_ENTER);
+  CHECK(r.waitFor("demo: sbx exec", 15000), "attaches for Esc");
+  r.run(300);
+  r.p.press(BTN_B);
+  r.run(500);
+  CHECK(!r.shows("^["), "a single tap of B sends nothing");
+  r.p.press(BTN_B);
+  r.run(500);
+  CHECK(!r.shows("^["), "two slow taps of B send nothing");
+  r.p.press(BTN_B);
+  r.p.press(BTN_B);
+  CHECK(r.waitFor("^["), "double-tapping B presses Esc");
+  r.p.press(KEY_ENTER);
+  CHECK(r.waitFor("Detached", 8000), "the session is still live after Esc");
+  r.p.press(KEY_ESC);
+  CHECK(r.waitFor("Attach to agent"), "back at the sandbox after Esc");
+  r.p.press(KEY_DOWN);
+  r.run();
+  r.p.press(KEY_ENTER);
+  CHECK(r.waitFor("demo: sbx exec", 15000), "opens a shell");
+  r.run(300);
+  r.p.press(BTN_B);
+  r.p.press(BTN_B);
+  r.run(400);
+  CHECK(!r.shows("^["), "double-tapping B does nothing in a shell");
+  r.p.press(KEY_ENTER);
+  CHECK(r.waitFor("shell exited", 8000), "the shell ends");
+  r.p.press(KEY_ESC);
+  CHECK(r.waitFor("Attach to agent"), "back at the sandbox after the shell");
+  r.p.press(KEY_UP);
+  r.run();
+
   // The same controls in the New sandbox form.
   const std::string end = getenv("MIC_EXPECT_END");
   const auto dictate = [&] {

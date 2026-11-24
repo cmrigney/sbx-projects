@@ -45,6 +45,7 @@ arduino-cli compile --upload --fqbn Seeeduino:samd:seeed_wio_terminal -p <port> 
 | 5-way press | Select | Return to the live screen |
 | Button C (left) | Back | Detach; the agent keeps running |
 | Button B (middle) | New sandbox | Cancel dictation. Restart, after the keyboard is lost |
+| Double-tap B | | Esc, when attached to an agent |
 | Hold B | Clear a New sandbox text field | Ctrl+C |
 | Button A (right) | Refresh | Start dictating, then press again to finish |
 | Double-tap A | Enter, in the New sandbox form | Enter |
@@ -65,7 +66,7 @@ In the terminal, press **A**, speak, and press **A** again. The Mac transcribes 
 Whisper and the Wio types the text at the prompt without pressing Enter, so you can edit it with
 the keyboard before sending it. **B** cancels. Recordings stop by themselves after 45 seconds.
 
-You don't need a keyboard to finish: double-tap **A** to press Enter, or hold **B** to send Ctrl+C,
+You don't need a keyboard to finish: double-tap **A** to press Enter, double-tap **B** to press Esc in an agent's terminal, or hold **B** to send Ctrl+C,
 which clears the prompt. Ctrl+C goes to the session whatever it's doing, so holding B also
 interrupts a working agent.
 

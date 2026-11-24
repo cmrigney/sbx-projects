@@ -777,8 +777,20 @@ void App::handleTerminal(const Input &in) {
       detach();
       return;
     case BTN_B:
-      if (dictation_ != DICT_IDLE) cancelDictation();
-      else if (p_.keyboard() == KB_LOST) p_.restart();
+      if (dictation_ != DICT_IDLE) {
+        cancelDictation();  // this tap can't be the first of a double tap
+      } else if (p_.keyboard() == KB_LOST) {
+        p_.restart();
+      } else if (!termShell_) {
+        // A single tap does nothing here, so there's no need to wait to see if a second follows.
+        if (bPending_ && p_.ms() - bAt_ <= DOUBLE_TAP_MS) {
+          bPending_ = false;
+          handleTerminal(Input{KEY_ESC, 0, 0});
+        } else {
+          bPending_ = true;
+          bAt_ = p_.ms();
+        }
+      }
       return;
     case BTN_B_HOLD:
       if (dictation_ != DICT_IDLE) {
@@ -932,6 +944,7 @@ void App::tick() {
 
 void App::handle(const Input &in) {
   if (in.key != BTN_A) aPending_ = false;
+  if (in.key != BTN_B) bPending_ = false;
   if (view_ == V_TERMINAL) {
     handleTerminal(in);
     return;
