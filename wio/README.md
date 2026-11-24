@@ -44,11 +44,36 @@ arduino-cli compile --upload --fqbn Seeeduino:samd:seeed_wio_terminal -p <port> 
 | 5-way left / right | Back / open, or change a value | Scroll one page |
 | 5-way press | Select | Return to the live screen |
 | Button C (left) | Back | Detach; the agent keeps running |
-| Button B (middle) | New sandbox | Restart, after the keyboard is lost |
-| Button A (right) | Refresh | |
+| Button B (middle) | New sandbox | Cancel dictation. Restart, after the keyboard is lost |
+| Hold B | Clear a New sandbox text field | Ctrl+C |
+| Button A (right) | Refresh | Start dictating, then press again to finish |
+| Double-tap A | Enter, in the New sandbox form | Enter |
 
 The keyboard's arrows, Enter, Esc and Tab work in lists and forms. In the terminal, every key goes
 to the session, including Ctrl and Alt combinations.
+
+## Dictation
+
+Speak a reply instead of typing it. Set it up once on the Mac, then restart the server:
+
+```sh
+brew install whisper-cpp
+sbx-projects api whisper   # downloads the 142 MB English model
+```
+
+In the terminal, press **A**, speak, and press **A** again. The Mac transcribes the recording with
+Whisper and the Wio types the text at the prompt without pressing Enter, so you can edit it with
+the keyboard before sending it. **B** cancels. Recordings stop by themselves after 45 seconds.
+
+You don't need a keyboard to finish: double-tap **A** to press Enter, or hold **B** to send Ctrl+C,
+which clears the prompt. Ctrl+C goes to the session whatever it's doing, so holding B also
+interrupts a working agent.
+
+The New sandbox form works the same way on its text fields. Hold **B** to clear a field and
+double-tap **A** to move on. Spoken branch and kit names become `a-slug-like-this`, and a pull
+request field keeps only the number.
+
+Audio stays on your network and is deleted from the Mac after it's transcribed.
 
 ## Text size
 

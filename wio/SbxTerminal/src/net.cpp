@@ -171,6 +171,8 @@ bool WebSocket::open(const Config &c, const char *path) {
   closeReason_[0] = 0;
   state_ = HEAD;
   rxPos_ = rxLen_ = 0;
+  textLen_ = 0;
+  textTooLong_ = textReady_ = false;
   if (!tls_.connect(c.host, c.port, c.fingerprint)) {
     error_ = tls_.error();
     return false;
@@ -287,6 +289,52 @@ bool WebSocket::sendFrame(uint8_t opcode, const uint8_t *data, size_t len) {
 
 bool WebSocket::sendBinary(const uint8_t *data, size_t len) { return sendFrame(0x2, data, len); }
 
+// One frame however long, unlike sendFrame, because a JSON message can't be split across frames.
+bool WebSocket::sendText(const char *json) {
+  if (!open_) return false;
+  const size_t len = strlen(json);
+  uint8_t head[8];
+  size_t h = 0;
+  head[h++] = 0x81;
+  if (len < 126) {
+    head[h++] = 0x80 | (uint8_t)len;
+  } else {
+    head[h++] = 0x80 | 126;
+    head[h++] = len >> 8;
+    head[h++] = len & 0xFF;
+  }
+  uint8_t mask[4];
+  p_.random(mask, sizeof(mask));
+  memcpy(head + h, mask, 4);
+  h += 4;
+  uint8_t out[256];
+  memcpy(out, head, h);
+  size_t used = h;
+  for (size_t i = 0; i < len; i++) {
+    out[used++] = (uint8_t)json[i] ^ mask[i % 4];
+    if (used == sizeof(out) || i + 1 == len) {
+      if (!tls_.write(out, used)) {
+        open_ = false;
+        return false;
+      }
+      used = 0;
+    }
+  }
+  if (len == 0 && !tls_.write(out, used)) {
+    open_ = false;
+    return false;
+  }
+  return true;
+}
+
+bool WebSocket::sendAudio(const uint8_t *data, size_t len) {
+  static char message[40 + MAX_AUDIO_CHUNK * 4 / 3 + 4];
+  const int n = snprintf(message, sizeof(message), "{\"type\":\"dictate-audio\",\"data\":\"");
+  base64(data, len, message + n);
+  strcat(message, "\"}");
+  return sendText(message);
+}
+
 void WebSocket::finishControl() {
   if (opcode_ == 0x9) {
     sendFrame(0xA, control_, controlLen_);
@@ -307,7 +355,7 @@ void WebSocket::finishControl() {
 int WebSocket::poll(uint8_t *out, size_t max) {
   size_t produced = 0;
   while (produced < max) {
-    if (!open_) break;
+    if (!open_ || textReady_) break;  // the caller takes a message before more is read
     if (rxPos_ == rxLen_) {
       const int r = tls_.read(rx_, sizeof(rx_));
       if (r < 0) {
@@ -340,6 +388,8 @@ int WebSocket::poll(uint8_t *out, size_t max) {
         }
         left_ = lenValue_;
         controlLen_ = 0;
+        textLen_ = 0;
+        textTooLong_ = false;
         if (opcode_ & 0x8) {
           state_ = CONTROL;
           if (left_ == 0) {
@@ -359,6 +409,8 @@ int WebSocket::poll(uint8_t *out, size_t max) {
             break;
           }
           left_ = lenValue_;
+          textLen_ = 0;
+          textTooLong_ = false;
           state_ = left_ ? PAYLOAD : HEAD;
         }
         break;
@@ -366,7 +418,14 @@ int WebSocket::poll(uint8_t *out, size_t max) {
         size_t n = rxLen_ - rxPos_;
         if (n > left_) n = (size_t)left_;
         if (opcode_ == 0x1) {
-          rxPos_ += n;  // the server sends only binary frames
+          // The server's messages; terminal output is binary.
+          if (textLen_ + n < sizeof(text_)) {
+            memcpy(text_ + textLen_, rx_ + rxPos_, n);
+            textLen_ += n;
+          } else {
+            textTooLong_ = true;
+          }
+          rxPos_ += n;
         } else {
           if (n > max - produced) n = max - produced;
           memcpy(out + produced, rx_ + rxPos_, n);
@@ -374,7 +433,13 @@ int WebSocket::poll(uint8_t *out, size_t max) {
           rxPos_ += n;
         }
         left_ -= n;
-        if (left_ == 0) state_ = HEAD;
+        if (left_ == 0) {
+          state_ = HEAD;
+          if (opcode_ == 0x1 && !textTooLong_) {
+            text_[textLen_] = 0;
+            textReady_ = true;
+          }
+        }
         break;
       }
       case CONTROL:

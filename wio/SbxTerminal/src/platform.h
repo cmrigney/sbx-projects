@@ -5,6 +5,8 @@
 #include <stddef.h>
 #include <stdint.h>
 
+#include "mic.h"
+
 enum Key : uint8_t {
   KEY_NONE,
   KEY_TEXT,  // Input::ch holds the character
@@ -33,6 +35,7 @@ enum Key : uint8_t {
   BTN_A,  // right
   BTN_B,  // middle
   BTN_C,  // left
+  BTN_B_HOLD,  // B held down; a short press is BTN_B, sent on release
 };
 
 enum : uint8_t { MOD_CTRL = 0x11, MOD_SHIFT = 0x22, MOD_ALT = 0x44, MOD_GUI = 0x88 };
@@ -97,4 +100,8 @@ class Platform {
   virtual KeyboardState keyboard() = 0;
   virtual void forgetKeyboards() = 0;
   virtual void restart() = 0;
+
+  // Starts feeding the microphone into stream at 16 kHz, from an interrupt.
+  virtual bool micStart(MicStream &stream) = 0;
+  virtual void micStop() = 0;
 };

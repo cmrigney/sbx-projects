@@ -1,5 +1,6 @@
 // Drives the real firmware UI, TLS, HTTP and WebSocket code against `sbx-projects api --demo`.
 // usage: e2e HOST PORT PAIRING_CODE FINGERPRINT_HEX OUT_DIR
+#include <math.h>
 #include <stdlib.h>
 
 #include <string>
@@ -22,6 +23,24 @@ static std::string screenText(const Grid &g) {
       out += ch < 0x7F ? (char)ch : '?';
     }
     out += '\n';
+  }
+  return out;
+}
+
+// A WAV of 16-bit 16 kHz mono, as the ADC's 12-bit readings around mid-scale at a quiet level; or a
+// second of tone when there's no file.
+static std::vector<uint16_t> micSamples() {
+  std::vector<uint16_t> out;
+  const char *path = getenv("MIC_WAV");
+  if (path && *path) {
+    FILE *f = fopen(path, "rb");
+    if (!f) abort();
+    fseek(f, 44, SEEK_SET);
+    int16_t s;
+    while (fread(&s, 2, 1, f) == 1) out.push_back((uint16_t)(1900 + s / 64));
+    fclose(f);
+  } else {
+    for (int i = 0; i < 16000; i++) out.push_back((uint16_t)(1900 + 300 * sin(i * 0.2)));
   }
   return out;
 }
@@ -172,6 +191,90 @@ int main(int argc, char **argv) {
   r.shot("17-terminal-large");
   r.p.press(BTN_C);
   CHECK(r.waitFor("Attach to agent"), "detaches at the large size");
+
+  // Dictation: the mic's audio goes to the Mac and its text is typed, without pressing Enter.
+  r.p.micSamples = micSamples();
+  r.p.press(KEY_UP);
+  r.run();
+  r.p.press(KEY_ENTER);
+  CHECK(r.waitFor("demo: sbx exec", 15000), "attaches for dictation");
+  r.run(300);
+  r.p.press(BTN_A);
+  CHECK(r.waitFor("REC"), "shows that it's recording");
+  r.shot("18-recording");
+  r.run((int)(r.p.micSamples.size() / 16) + 300);
+  r.p.press(BTN_A);
+  CHECK(r.waitFor("Transcribing"), "sends the recording");
+  r.shot("19-transcribing");
+  const std::string expected = getenv("MIC_EXPECT");
+  CHECK(r.waitFor(expected.substr(0, 12).c_str(), 45000), "types the transcript");
+  r.run(600);
+  r.shot("20-transcript");
+  CHECK(!r.shows("Detached"), "doesn't press Enter");
+  const auto inked = [&] {
+    int n = 0;
+    for (char c : screenText(r.app->screen())) n += c != ' ' && c != '\n';
+    return n;
+  };
+  const int before = inked();
+  r.p.press(KEY_BACKSPACE);  // the space after the transcript
+  r.p.press(KEY_BACKSPACE);  // its last character
+  r.run(300);
+  CHECK(inked() == before - 1, "the transcript can be backspaced");
+  r.p.press(BTN_A);
+  CHECK(r.waitFor("REC"), "records again");
+  r.p.press(BTN_B);
+  CHECK(r.waitFor("Dictation cancelled"), "cancels a recording");
+  r.p.press(BTN_C);
+  CHECK(r.waitFor("Attach to agent"), "detaches after dictating");
+
+  // Without a keyboard: double-tapping A is Enter, and holding B is Ctrl+C.
+  r.p.press(KEY_ENTER);
+  CHECK(r.waitFor("demo: sbx exec", 15000), "attaches again");
+  r.run(300);
+  r.p.press(BTN_A);
+  r.p.press(BTN_A);
+  CHECK(r.waitFor("Detached", 8000), "double-tapping A presses Enter");
+  r.p.press(KEY_ESC);
+  CHECK(r.waitFor("Attach to agent"), "back at the sandbox");
+  r.p.press(KEY_ENTER);
+  CHECK(r.waitFor("demo: sbx exec", 15000), "attaches once more");
+  r.run(300);
+  r.p.press(BTN_B_HOLD);
+  CHECK(r.waitFor("session ended", 8000), "holding B sends Ctrl+C");
+  r.p.press(KEY_ESC);
+  CHECK(r.waitFor("Attach to agent"), "back at the sandbox after Ctrl+C");
+
+  // The same controls in the New sandbox form.
+  const std::string end = getenv("MIC_EXPECT_END");
+  const auto dictate = [&] {
+    r.p.press(BTN_A);
+    CHECK(r.waitFor("REC", 8000), "records into a field");
+    r.run((int)(r.p.micSamples.size() / 16) + 200);
+    r.p.press(BTN_A);
+    CHECK(r.waitFor("Transcribing"), "transcribes for a field");
+  };
+  r.p.press(KEY_ESC);
+  CHECK(r.waitFor("Enter  C back"), "back at the list for the form");
+  r.p.press(BTN_B);
+  CHECK(r.waitFor("New sandbox", 25000), "opens the form");
+  CHECK(r.waitFor("hold B clear"), "shows the voice controls on a text field");
+  dictate();
+  CHECK(r.waitFor(end.c_str(), 45000), "puts the words in the Task field");
+  r.shot("21-form-dictated");
+  r.p.press(BTN_B_HOLD);
+  r.run(150);
+  CHECK(!r.shows(end.c_str()), "holding B clears the field");
+  r.p.press(BTN_A);
+  r.p.press(BTN_A);
+  CHECK(r.waitFor("L/R change"), "double-tapping A moves to the next field");
+  r.p.press(KEY_DOWN);
+  r.run();
+  dictate();
+  CHECK(r.waitFor(("-" + end).c_str(), 45000), "makes a branch name from the words");
+  r.shot("22-form-branch");
+  r.p.press(BTN_C);
+  CHECK(r.waitFor("All sandboxes"), "leaves the form");  // opened from all sandboxes
 
   printf("%s\n", failures ? "FAILED" : "PASSED");
   return failures ? 1 : 0;

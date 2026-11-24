@@ -140,6 +140,79 @@ static Button buttons[] = {
     {WIO_KEY_B, BTN_B, false, false, 0, 0},       {WIO_KEY_C, BTN_C, false, false, 0, 0},
 };
 
+// ---------------------------------------------------------------------------
+// Microphone: TC4 reads the ADC 16,000 times a second
+// ---------------------------------------------------------------------------
+
+static MicStream *volatile micStream = nullptr;
+static Adc *micAdc = nullptr;
+
+extern "C" void TC4_Handler(void) {
+  TC4->COUNT16.INTFLAG.reg = TC_INTFLAG_OVF;
+  if (MicStream *stream = micStream) stream->push(micAdc->RESULT.reg);
+  micAdc->SWTRIG.bit.START = 1;  // ready long before the next tick
+}
+
+static bool startMic(MicStream &stream) {
+  const PinDescription &pin = g_APinDescription[WIO_MIC];
+  micAdc = (pin.ulPinAttribute & PIN_ATTR_ANALOG_ALT) ? ADC1 : ADC0;
+  (void)analogRead(WIO_MIC);  // routes the pin and selects it on the ADC
+
+  micAdc->CTRLB.bit.RESSEL = ADC_CTRLB_RESSEL_12BIT_Val;
+  while (micAdc->SYNCBUSY.reg & ADC_SYNCBUSY_CTRLB) {
+  }
+  micAdc->CTRLA.bit.ENABLE = 1;
+  while (micAdc->SYNCBUSY.reg & ADC_SYNCBUSY_ENABLE) {
+  }
+  micAdc->SWTRIG.bit.START = 1;  // the first conversion after enabling is discarded
+  while (!micAdc->INTFLAG.bit.RESRDY) {
+  }
+  (void)micAdc->RESULT.reg;
+  micAdc->SWTRIG.bit.START = 1;
+  while (!micAdc->INTFLAG.bit.RESRDY) {
+  }
+
+  MCLK->APBCMASK.bit.TC4_ = 1;
+  GCLK->PCHCTRL[TC4_GCLK_ID].reg = GCLK_PCHCTRL_GEN_GCLK1 | GCLK_PCHCTRL_CHEN;  // 48 MHz
+  while (!(GCLK->PCHCTRL[TC4_GCLK_ID].reg & GCLK_PCHCTRL_CHEN)) {
+  }
+  TC4->COUNT16.CTRLA.bit.SWRST = 1;
+  while (TC4->COUNT16.SYNCBUSY.bit.SWRST) {
+  }
+  TC4->COUNT16.CTRLA.reg = TC_CTRLA_MODE_COUNT16 | TC_CTRLA_PRESCALER_DIV1;
+  TC4->COUNT16.WAVE.reg = TC_WAVE_WAVEGEN_MFRQ;
+  TC4->COUNT16.CC[0].reg = 48000000 / 16000 - 1;
+  while (TC4->COUNT16.SYNCBUSY.bit.CC0) {
+  }
+  micStream = &stream;
+  TC4->COUNT16.INTFLAG.reg = TC_INTFLAG_OVF;
+  TC4->COUNT16.INTENSET.reg = TC_INTENSET_OVF;
+  NVIC_ClearPendingIRQ(TC4_IRQn);
+  NVIC_SetPriority(TC4_IRQn, 1);
+  NVIC_EnableIRQ(TC4_IRQn);
+  TC4->COUNT16.CTRLA.bit.ENABLE = 1;
+  while (TC4->COUNT16.SYNCBUSY.bit.ENABLE) {
+  }
+  logf("mic: recording, heap %u", (unsigned)freeHeap());
+  return true;
+}
+
+static void stopMic() {
+  TC4->COUNT16.CTRLA.bit.ENABLE = 0;
+  while (TC4->COUNT16.SYNCBUSY.bit.ENABLE) {
+  }
+  NVIC_DisableIRQ(TC4_IRQn);
+  micStream = nullptr;
+  __DSB();
+  micAdc->CTRLA.bit.ENABLE = 0;
+  while (micAdc->SYNCBUSY.reg & ADC_SYNCBUSY_ENABLE) {
+  }
+  micAdc->CTRLB.bit.RESSEL = ADC_CTRLB_RESSEL_10BIT_Val;  // the board's default
+  while (micAdc->SYNCBUSY.reg & ADC_SYNCBUSY_CTRLB) {
+  }
+  logf("mic: stopped");
+}
+
 class WioPlatform : public Platform {
  public:
   uint32_t ms() override { return millis(); }
@@ -172,11 +245,24 @@ class WioPlatform : public Platform {
       if (down != b.down && now - b.changedAt >= 25) {
         b.down = down;
         b.changedAt = now;
+        if (b.key == BTN_B) {  // a tap or a hold, known only once it's released or long enough
+          if (down) {
+            bHeld_ = false;
+          } else if (!bHeld_) {
+            out = Input{BTN_B, 0, 0};
+            return true;
+          }
+          continue;
+        }
         if (down) {
           b.repeatAt = now + 350;
           out = Input{b.key, 0, 0};
           return true;
         }
+      } else if (b.key == BTN_B && down && b.down && !bHeld_ && now - b.changedAt >= 700) {
+        bHeld_ = true;
+        out = Input{BTN_B_HOLD, 0, 0};
+        return true;
       } else if (down && b.down && b.repeats && (int32_t)(now - b.repeatAt) >= 0) {
         b.repeatAt = now + 110;
         out = Input{b.key, 0, 0};
@@ -258,7 +344,11 @@ class WioPlatform : public Platform {
   void forgetKeyboards() override { BleKeyboard::clearBonds(); }
   void restart() override { NVIC_SystemReset(); }
 
+  bool micStart(MicStream &stream) override { return startMic(stream); }
+  void micStop() override { stopMic(); }
+
  private:
+  bool bHeld_ = false;
   WioTransport transport_;
 };
 

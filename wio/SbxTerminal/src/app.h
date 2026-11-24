@@ -96,6 +96,19 @@ class App {
   void terminalClosed();
   void wheel(bool up, int notches);
   void drawTerminalBar();
+  void startDictation();
+  void finishDictation();
+  void cancelDictation();
+  void endMic();
+  void dictationStatus(const char *message);
+  void dictationLost();
+  void pumpFormDictation();
+  bool handleFormVoice(const Input &in);
+  void insertTranscript(const char *spoken);
+  void drawFormFooter();
+  void pumpDictation();
+  void handleServerMessage(char *json);
+  bool typeTranscript(size_t maxBytes);
   static void vtReply(void *ctx, const uint8_t *data, size_t len);
 
   void drawProjects();
@@ -165,4 +178,16 @@ class App {
   bool blinkOn_ = true;
   int drawnCursorRow_ = -1, drawnCursorCol_ = -1;
   uint8_t termBuf_[1024];
+
+  enum Dictation : uint8_t { DICT_IDLE, DICT_RECORDING, DICT_WAITING };
+  MicStream mic_;
+  Dictation dictation_ = DICT_IDLE;
+  uint32_t dictationAt_ = 0, statusUntil_ = 0;
+  char dictationStatus_[48] = "";
+  uint8_t audioChunk_[WebSocket::MAX_AUDIO_CHUNK];
+  char transcript_[1002];  // what's still to be typed
+  size_t transcriptPos_ = 0, transcriptLen_ = 0;
+  uint32_t lastTyped_ = 0, lastFooter_ = 0;
+  bool aPending_ = false;  // A was tapped once and may be tapped again
+  uint32_t aAt_ = 0;
 };

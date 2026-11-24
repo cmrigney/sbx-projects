@@ -14,6 +14,7 @@
 
 #include <deque>
 #include <string>
+#include <vector>
 
 #include "../SbxTerminal/src/platform.h"
 
@@ -80,6 +81,7 @@ class HostPlatform : public Platform {
     }
   }
   bool poll(Input &out) override {
+    feedMic();
     if (keys.empty()) return false;
     out = keys.front();
     keys.pop_front();
@@ -107,6 +109,20 @@ class HostPlatform : public Platform {
   void forgetKeyboards() override {}
   void restart() override {}
 
+  bool micStart(MicStream &stream) override {
+    mic = &stream;
+    micStartedAt = ms();
+    micFed = 0;
+    return true;
+  }
+  void micStop() override {
+    feedMic();
+    mic = nullptr;
+  }
+
+  // Samples as the ADC would give them, played back in real time.
+  std::vector<uint16_t> micSamples;
+
   void press(Key k, uint8_t mods = 0) { keys.push_back(Input{k, mods, 0}); }
   void type(const char *s) {
     for (; *s; s++) keys.push_back(Input{KEY_TEXT, 0, *s});
@@ -126,5 +142,16 @@ class HostPlatform : public Platform {
   }
 
  private:
+  void feedMic() {
+    if (!mic) return;
+    const size_t due = (size_t)(ms() - micStartedAt) * 16;
+    while (micFed < due) {
+      mic->push(micFed < micSamples.size() ? micSamples[micFed] : 2048);
+      micFed++;
+    }
+  }
+  MicStream *mic = nullptr;
+  uint32_t micStartedAt = 0;
+  size_t micFed = 0;
   HostTransport net;
 };

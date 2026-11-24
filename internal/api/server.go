@@ -36,6 +36,8 @@ type Server struct {
 	// ProjectsDir is where projects made from the apps go. Empty means
 	// ~/Projects.
 	ProjectsDir string
+	// Speech transcribes dictation from the Wio Terminal. Nil turns it off.
+	Speech Transcriber
 
 	// making holds one new project at a time.
 	making sync.Mutex
@@ -48,6 +50,7 @@ func (s *Server) Handler() http.Handler {
 	// The terminal authenticates itself, as browsers send its token in the
 	// WebSocket's subprotocols.
 	mux.HandleFunc("GET /v1/sandboxes/{name}/terminal", s.terminal)
+	mux.HandleFunc("GET /v1/dictate", s.dictate)
 
 	auth := func(pattern string, h http.HandlerFunc) { mux.Handle(pattern, s.auth(h)) }
 	auth("GET /v1/events", s.events)

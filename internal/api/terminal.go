@@ -40,6 +40,8 @@ type terminalMsg struct {
 	Type string `json:"type"`
 	Cols int    `json:"cols"`
 	Rows int    `json:"rows"`
+	// Data is a dictate-audio message's audio, in base64.
+	Data string `json:"data"`
 }
 
 // pingEvery keeps idle terminals from being dropped by NATs and proxies.
@@ -134,9 +136,11 @@ func (s *Server) terminal(w http.ResponseWriter, r *http.Request) {
 		}
 	}()
 
-	// Keystrokes and resizes.
+	// Keystrokes, resizes and dictation.
+	dictate := &dictation{speech: s.Speech, conn: c, ctx: ctx}
 	go func() {
 		defer cancel()
+		defer dictate.stop()
 		for {
 			typ, b, err := c.Read(ctx)
 			if err != nil {
@@ -149,8 +153,13 @@ func (s *Server) terminal(w http.ResponseWriter, r *http.Request) {
 				continue
 			}
 			var msg terminalMsg
-			if json.Unmarshal(b, &msg) == nil && msg.Type == "resize" {
+			if json.Unmarshal(b, &msg) != nil {
+				continue
+			}
+			if msg.Type == "resize" {
 				_ = pty.Setsize(ptmx, winsize(msg.Cols, msg.Rows))
+			} else {
+				dictate.handle(msg)
 			}
 		}
 	}()

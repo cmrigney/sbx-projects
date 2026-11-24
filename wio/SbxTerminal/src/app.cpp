@@ -4,6 +4,8 @@
 #include <stdlib.h>
 #include <string.h>
 
+#include <ArduinoJson.h>
+
 #include "keymap.h"
 
 // The apps' dark theme.
@@ -23,6 +25,12 @@ static const int LIST_TOP = 1;
 static const uint32_t FLUSH_MS = 40;
 static const uint32_t BLINK_MS = 500;
 static const int PAGE_NOTCHES = 5;
+static const uint32_t MAX_RECORDING_MS = 45000;
+static const uint32_t TRANSCRIBE_WAIT_MS = 70000;  // the server gives up after 60 s
+static const uint32_t STATUS_MS = 6000;
+static const uint32_t TYPE_EVERY_MS = 25;
+static const size_t TYPE_BYTES = 12;  // about 480 characters a second
+static const uint32_t DOUBLE_TAP_MS = 350;
 
 static uint16_t stateColor(const SandboxInfo &s) {
   if (!strcmp(s.state, "needsYou")) return C_WARN;
@@ -480,12 +488,239 @@ void App::pumpTerminal() {
       terminalClosed();
       return;
     }
+    if (n > 0) vt_.feed(termBuf_, n);
+    if (char *json = ws_.text()) {
+      handleServerMessage(json);
+      ws_.clearText();
+      continue;
+    }
     if (n == 0) break;
-    vt_.feed(termBuf_, n);
   }
 }
 
+// ---------------------------------------------------------------------------
+// Dictation
+// ---------------------------------------------------------------------------
+
+void App::dictationStatus(const char *message) {
+  snprintf(dictationStatus_, sizeof(dictationStatus_), "%s", message);
+  statusUntil_ = p_.ms() + STATUS_MS;
+}
+
+void App::endMic() {
+  if (dictation_ == DICT_RECORDING) p_.micStop();
+  mic_.end();
+}
+
+// The terminal's socket carries the audio. A form has none, so it opens one for each recording;
+// the Wio has memory for only one TLS connection, so it's closed again before anything else.
+void App::dictationLost() {
+  if (view_ == V_TERMINAL) {
+    terminalClosed();
+    return;
+  }
+  endMic();
+  dictation_ = DICT_IDLE;
+  ws_.close();
+  dictationStatus("Lost the connection");
+  needsDraw_ = true;
+}
+
+void App::startDictation() {
+  const bool form = view_ != V_TERMINAL;
+  if (!typeTranscript(sizeof(transcript_))) {  // anything still being typed goes first
+    terminalClosed();
+    return;
+  }
+  dictationStatus_[0] = 0;
+  if (form) {
+    dictationStatus("Connecting");
+    drawFormFooter();
+    flush();
+    const bool opened = ws_.open(config_, "/v1/dictate");
+    dictationStatus_[0] = 0;
+    if (!opened) {
+      dictationStatus(ws_.error());
+      needsDraw_ = true;
+      return;
+    }
+  }
+  if (!mic_.begin()) {
+    if (form) ws_.close();
+    dictationStatus("Not enough memory for the mic");
+    needsDraw_ = true;
+    return;
+  }
+  if (!p_.micStart(mic_)) {
+    mic_.end();
+    if (form) ws_.close();
+    dictationStatus("Couldn't start the mic");
+    needsDraw_ = true;
+    return;
+  }
+  dictation_ = DICT_RECORDING;
+  dictationAt_ = p_.ms();
+  needsDraw_ = form;
+  if (!ws_.sendText("{\"type\":\"dictate-start\"}")) dictationLost();
+}
+
+void App::finishDictation() {
+  p_.micStop();
+  // The interrupt has stopped, so what's buffered is all there is.
+  for (;;) {
+    const size_t n = mic_.read(audioChunk_, sizeof(audioChunk_));
+    if (!n) break;
+    if (!ws_.sendAudio(audioChunk_, n)) {
+      mic_.end();
+      dictation_ = DICT_IDLE;
+      dictationLost();
+      return;
+    }
+  }
+  mic_.end();
+  dictation_ = DICT_WAITING;
+  dictationAt_ = p_.ms();
+  if (view_ != V_TERMINAL) needsDraw_ = true;
+  if (!ws_.sendText("{\"type\":\"dictate-end\"}")) {
+    dictation_ = DICT_IDLE;
+    dictationLost();
+  }
+}
+
+void App::cancelDictation() {
+  endMic();
+  dictation_ = DICT_IDLE;
+  dictationStatus("Dictation cancelled");
+  if (view_ != V_TERMINAL) {
+    ws_.close();  // which also stops the Mac transcribing
+    needsDraw_ = true;
+  } else if (!ws_.sendText("{\"type\":\"dictate-cancel\"}")) {
+    terminalClosed();
+  }
+}
+
+void App::pumpDictation() {
+  if (dictation_ == DICT_WAITING && p_.ms() - dictationAt_ > TRANSCRIBE_WAIT_MS) {
+    dictation_ = DICT_IDLE;
+    dictationStatus("The Mac didn't answer");
+    if (view_ != V_TERMINAL) {
+      ws_.close();
+      needsDraw_ = true;
+    }
+    return;
+  }
+  if (dictation_ != DICT_RECORDING) return;
+  if (mic_.overflowed() || p_.ms() - dictationAt_ >= MAX_RECORDING_MS) {
+    finishDictation();
+    return;
+  }
+  // Whole chunks, so a slow moment on the network is absorbed by the mic's buffer.
+  while (mic_.available() >= sizeof(audioChunk_)) {
+    const size_t n = mic_.read(audioChunk_, sizeof(audioChunk_));
+    if (!ws_.sendAudio(audioChunk_, n)) {
+      endMic();
+      dictation_ = DICT_IDLE;
+      dictationLost();
+      return;
+    }
+  }
+}
+
+void App::handleServerMessage(char *json) {
+  JsonDocument doc;
+  if (deserializeJson(doc, json)) return;
+  const char *type = doc["type"] | "";
+  if (dictation_ != DICT_WAITING) return;  // cancelled while it was on its way
+  if (!strcmp(type, "dictate-error")) {
+    dictation_ = DICT_IDLE;
+    dictationStatus(doc["message"] | "Dictation failed");
+    if (view_ != V_TERMINAL) {
+      ws_.close();
+      needsDraw_ = true;
+    }
+  } else if (!strcmp(type, "transcript")) {
+    dictation_ = DICT_IDLE;
+    // Control characters are dropped here too: this is typed into a live terminal.
+    size_t n = 0;
+    for (const char *t = doc["text"] | ""; *t && n + 2 < sizeof(transcript_); t++) {
+      const uint8_t c = (uint8_t)*t;
+      if (c >= 0x20 && c != 0x7F) transcript_[n++] = *t;
+    }
+    if (view_ != V_TERMINAL) {
+      transcript_[n] = 0;
+      insertTranscript(transcript_);
+      ws_.close();
+      needsDraw_ = true;
+      return;
+    }
+    if (n) transcript_[n++] = ' ';  // so the next dictation continues the sentence
+    transcriptPos_ = 0;
+    transcriptLen_ = n;
+  }
+}
+
+void App::pumpFormDictation() {
+  const int n = ws_.poll(termBuf_, sizeof(termBuf_));
+  if (char *json = ws_.text()) {
+    handleServerMessage(json);
+    ws_.clearText();
+    return;
+  }
+  if (n < 0) dictationLost();
+}
+
+// The form's voice controls. Returns true if the input was theirs. While dictating, other keys
+// are held back so the words can't land in a different field.
+bool App::handleFormVoice(const Input &in) {
+  if (dictation_ != DICT_IDLE) {
+    if (in.key == BTN_A && dictation_ == DICT_RECORDING) finishDictation();
+    else if (in.key == BTN_B || in.key == BTN_B_HOLD || isBack(in.key)) cancelDictation();
+    return true;
+  }
+  if (in.key == BTN_A) {
+    if (aPending_) {
+      aPending_ = false;
+      handleForm(Input{KEY_ENTER, 0, 0});
+    } else {
+      aPending_ = true;
+      aAt_ = p_.ms();
+    }
+    return true;
+  }
+  if (in.key == BTN_B_HOLD) {
+    Field &f = fields_[focus_];
+    if (f.type == F_TEXT) {
+      f.text[0] = 0;
+      textCursor_ = 0;
+      needsDraw_ = true;
+    }
+    return true;
+  }
+  return false;
+}
+
+// Types what's left of the transcript, up to maxBytes, without pressing Enter. Returns false if
+// the connection is gone.
+bool App::typeTranscript(size_t maxBytes) {
+  size_t n = transcriptLen_ - transcriptPos_;
+  if (!n) return true;
+  if (n > maxBytes) {
+    n = maxBytes;
+    // Whole UTF-8 characters, in case the far end reads them a frame at a time.
+    while (n > 1 && ((uint8_t)transcript_[transcriptPos_ + n] & 0xC0) == 0x80) n--;
+  }
+  if (!ws_.sendBinary((const uint8_t *)transcript_ + transcriptPos_, n)) {
+    transcriptPos_ = transcriptLen_ = 0;
+    return false;
+  }
+  transcriptPos_ += n;
+  return true;
+}
+
 void App::terminalClosed() {
+  endMic();
+  dictation_ = DICT_IDLE;
+  transcriptPos_ = transcriptLen_ = 0;
   termOpen_ = false;
   const uint16_t code = ws_.closeCode();
   if (ws_.closeReason()[0]) {
@@ -502,6 +737,9 @@ void App::terminalClosed() {
 }
 
 void App::detach() {
+  endMic();
+  dictation_ = DICT_IDLE;
+  transcriptPos_ = transcriptLen_ = 0;
   termOpen_ = false;
   ws_.close();
   vt_.reset();
@@ -539,9 +777,32 @@ void App::handleTerminal(const Input &in) {
       detach();
       return;
     case BTN_B:
-      if (p_.keyboard() == KB_LOST) p_.restart();
+      if (dictation_ != DICT_IDLE) cancelDictation();
+      else if (p_.keyboard() == KB_LOST) p_.restart();
+      return;
+    case BTN_B_HOLD:
+      if (dictation_ != DICT_IDLE) {
+        cancelDictation();
+      } else {
+        transcriptPos_ = transcriptLen_ = 0;  // what wasn't typed yet is cleared too
+        const uint8_t ctrlC = 0x03;
+        if (!ws_.sendBinary(&ctrlC, 1)) terminalClosed();
+        else dictationStatus("Sent Ctrl+C");
+      }
       return;
     case BTN_A:
+      if (dictation_ == DICT_RECORDING) {
+        finishDictation();
+      } else if (dictation_ == DICT_IDLE) {
+        // One tap records, after a moment to see whether a second is coming.
+        if (aPending_) {
+          aPending_ = false;
+          handleTerminal(Input{KEY_ENTER, 0, 0});
+        } else {
+          aPending_ = true;
+          aAt_ = p_.ms();
+        }
+      }
       return;
     case SW_UP:
       wheel(true, 1);
@@ -563,6 +824,11 @@ void App::handleTerminal(const Input &in) {
     default:
       break;
   }
+  // A key pressed while the transcript is being typed lands after it.
+  if (!typeTranscript(sizeof(transcript_))) {
+    terminalClosed();
+    return;
+  }
   char bytes[16];
   const size_t n = keyToBytes(in, vt_.appCursor(), bytes);
   if (n && !ws_.sendBinary((const uint8_t *)bytes, n)) terminalClosed();
@@ -573,14 +839,36 @@ void App::drawTerminalBar() {
   char left[MAX_COLS + 1];
   snprintf(left, sizeof(left), " %s%s", termName_, termShell_ ? " (shell)" : "");
   const KeyboardState kb = p_.keyboard();
-  const char *right = kb == KB_LOST ? "KB LOST: B restarts " : scrollDepth_ > 0 ? "SCROLL: press=live " : "C detach ";
+  char recording[28];
+  const char *right = kb == KB_LOST ? "KB LOST: B restarts " : scrollDepth_ > 0 ? "SCROLL: press=live " : "A mic AA=enter C back ";
+  uint16_t fg = scrollDepth_ > 0 ? C_WARN : C_MUTED;
+  if (dictation_ == DICT_RECORDING) {
+    snprintf(recording, sizeof(recording), "REC %2us  A send B cancel ", (unsigned)((p_.ms() - dictationAt_) / 1000));
+    right = recording;
+    fg = C_FAIL;
+  } else if (dictation_ == DICT_WAITING) {
+    right = "Transcribing  B cancel ";
+    fg = C_ACCENT;
+  } else if (dictationStatus_[0]) {
+    if ((int32_t)(p_.ms() - statusUntil_) < 0) {
+      snprintf(recording, sizeof(recording), "%.26s ", dictationStatus_);
+      right = recording;
+      fg = C_WARN;
+    } else {
+      dictationStatus_[0] = 0;
+    }
+  }
   const int rightLen = strlen(right);
   const uint16_t bg = kb == KB_LOST ? 0x8000 : C_PANEL;
-  const uint16_t fg = scrollDepth_ > 0 ? C_WARN : C_MUTED;
   for (int c = 0; c < gridCols; c++) g->put(0, c, ' ', C_TEXT, bg);
   const int leftMax = gridCols - rightLen - 1;
   for (int c = 0; c < leftMax && left[c]; c++) g->put(0, c, (uint8_t)left[c], C_ACCENT, bg);
   for (int c = 0; c < rightLen; c++) g->put(0, gridCols - rightLen + c, (uint8_t)right[c], kb == KB_LOST ? C_TEXT : fg, bg);
+  // A level meter, so it's clear the mic hears you.
+  if (dictation_ == DICT_RECORDING && gridCols - rightLen - 2 >= 0) {
+    const uint8_t level = mic_.takeLevel();
+    g->put(0, gridCols - rightLen - 2, level ? 0x2580 + level : ' ', C_OK, bg);
+  }
 }
 
 // ---------------------------------------------------------------------------
@@ -592,10 +880,37 @@ void App::tick() {
   int handled = 0;
   while (handled++ < 8 && p_.poll(in)) handle(in);
 
+  if (aPending_ && p_.ms() - aAt_ >= DOUBLE_TAP_MS) {
+    aPending_ = false;
+    if (view_ == V_TERMINAL && termOpen_) {
+      startDictation();
+    } else if (view_ == V_NEW) {
+      if (fields_[focus_].type == F_TEXT) startDictation();
+      else dictationStatus("Pick a text field to dictate");
+      needsDraw_ = true;
+    }
+  }
+
   if (view_ == V_TERMINAL && termOpen_) pumpTerminal();
+  if (view_ == V_TERMINAL && termOpen_) pumpDictation();
+  if (view_ == V_NEW && dictation_ != DICT_IDLE) {
+    pumpFormDictation();
+    if (dictation_ != DICT_IDLE) pumpDictation();
+  }
+  if (view_ == V_NEW && (dictation_ != DICT_IDLE || dictationStatus_[0]) && p_.ms() - lastFooter_ >= 200) {
+    lastFooter_ = p_.ms();
+    drawFormFooter();
+  }
 
   if (view_ == V_TERMINAL) {
     const uint32_t now = p_.ms();
+    if (termOpen_ && transcriptPos_ < transcriptLen_ && now - lastTyped_ >= TYPE_EVERY_MS) {
+      lastTyped_ = now;
+      if (!typeTranscript(TYPE_BYTES)) {
+        terminalClosed();
+        return;
+      }
+    }
     if (now - lastBlink_ >= BLINK_MS) {
       blinkOn_ = !blinkOn_;
       lastBlink_ = now;
@@ -616,6 +931,7 @@ void App::tick() {
 }
 
 void App::handle(const Input &in) {
+  if (in.key != BTN_A) aPending_ = false;
   if (view_ == V_TERMINAL) {
     handleTerminal(in);
     return;
@@ -672,9 +988,11 @@ void App::handle(const Input &in) {
         handleList(in, 5);
       }
       break;
+    case V_NEW:
+      if (!handleFormVoice(in)) handleForm(in);
+      break;
     case V_WIFI_PASS:
     case V_SERVER:
-    case V_NEW:
       handleForm(in);
       break;
     case V_CONFIRM:
@@ -839,6 +1157,37 @@ static void removeBefore(char *buf, int &cursor) {
   if (cursor <= 0) return;
   memmove(buf + cursor - 1, buf + cursor, strlen(buf + cursor) + 1);
   cursor--;
+}
+
+// Puts spoken words in the focused field at its cursor. A task keeps them as a sentence. Branch
+// and kit names become a-slug-like-this, and a pull request keeps only its number, since Whisper
+// capitalizes and punctuates. Forms draw and send ASCII here.
+void App::insertTranscript(const char *spoken) {
+  Field &f = fields_[focus_];
+  if (f.type != F_TEXT) return;
+  const bool pr = f.id == FIELD_VALUE && sourceIndex_ == 1;
+  if (f.id == FIELD_TASK) {
+    if (textCursor_ > 0 && f.text[textCursor_ - 1] != ' ') insertChar(f.text, f.cap, textCursor_, ' ');
+    for (const char *t = spoken; *t; t++) {
+      if ((uint8_t)*t < 0x80) insertChar(f.text, f.cap, textCursor_, *t);
+    }
+    needsDraw_ = true;
+    return;
+  }
+  bool wantDash = !pr && textCursor_ > 0 && f.text[textCursor_ - 1] != '-';
+  for (const char *t = spoken; *t; t++) {
+    char c = *t;
+    if (c >= 'A' && c <= 'Z') c += 32;
+    const bool digit = c >= '0' && c <= '9';
+    if (pr ? !digit : !(digit || (c >= 'a' && c <= 'z'))) {
+      wantDash = !pr && textCursor_ > 0 && f.text[textCursor_ - 1] != '-';
+      continue;
+    }
+    if (wantDash) insertChar(f.text, f.cap, textCursor_, '-');
+    wantDash = false;
+    insertChar(f.text, f.cap, textCursor_, c);
+  }
+  needsDraw_ = true;
 }
 
 void App::handleForm(const Input &in) {
@@ -1169,13 +1518,41 @@ void App::drawDetail() {
   }
 }
 
-void App::drawForm(const char *title) {
-  header(title);
+void App::drawFormFooter() {
   const Field &focused = fields_[focus_];
+  const bool voice = view_ == V_NEW;
+  char line[MAX_COLS + 1];
+  if (voice && dictation_ == DICT_RECORDING) {
+    snprintf(line, sizeof(line), "REC %us  A done  B cancel", (unsigned)((p_.ms() - dictationAt_) / 1000));
+    footer(line);
+    const uint8_t level = mic_.takeLevel();
+    if (level) gridA_.put(gridRows - 1, gridCols - 2, 0x2580 + level, C_OK, C_PANEL);
+    return;
+  }
+  if (voice && dictation_ == DICT_WAITING) {
+    footer("Transcribing  B cancel");
+    return;
+  }
+  if (voice && dictationStatus_[0]) {
+    if ((int32_t)(p_.ms() - statusUntil_) < 0) {
+      footer(dictationStatus_);
+      return;
+    }
+    dictationStatus_[0] = 0;
+  }
+  if (voice && focused.type == F_TEXT) {
+    footer("A talk  AA next  hold B clear");
+    return;
+  }
   footer(focused.type == F_TEXT ? "Type  Up/Down  Esc back"
          : focused.type == F_CHOICE ? "L/R change  Up/Down  Esc"
-         : focused.type == F_TOGGLE ? "Enter toggle  Up/Down  Esc"
-                                    : "Enter confirm  Up/Down  Esc");
+         : focused.type == F_TOGGLE ? (voice ? "AA toggle  Up/Down  C back" : "Enter toggle  Up/Down  Esc")
+                                    : (voice ? "AA confirm  Up/Down  C back" : "Enter confirm  Up/Down  Esc"));
+}
+
+void App::drawForm(const char *title) {
+  header(title);
+  drawFormFooter();
   int bottom = LIST_BOTTOM;
   if (formError_[0]) {
     bottom--;

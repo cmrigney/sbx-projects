@@ -33,7 +33,8 @@ echo "Starting the demo server"
 (cd "$repo" && go build -o "$work/sbx-projects" ./cmd/sbx-projects)
 port=$((17000 + RANDOM % 2000))
 "$work/sbx-projects" api --demo --pair --db "$work/state/db" --listen "127.0.0.1:$port" --log off \
-  --projects-dir "$work/state/projects" --name wio-test >"$work/server.log" 2>&1 &
+  --projects-dir "$work/state/projects" --name wio-test \
+  --whisper-bin "${WHISPER_BIN:-$here/fake_whisper.sh}" --whisper-model "${WHISPER_MODEL:-$here/fake_whisper.sh}" >"$work/server.log" 2>&1 &
 server=$!
 for _ in $(seq 100); do
   grep -q 'The code works once' "$work/server.log" 2>/dev/null && break
@@ -47,7 +48,8 @@ echo "--- advertisements"
 g++ -std=gnu++14 -O1 -g -Wall "$here/adv_test.cpp" -o "$work/adv_test"
 "$work/adv_test"
 echo "--- end-to-end"
-"$work/e2e" 127.0.0.1 "$port" "$code" "$fp" "$out"
+MIC_WAV="${MIC_WAV:-}" MIC_EXPECT="${MIC_EXPECT:-the words from whisper}" MIC_EXPECT_END="${MIC_EXPECT_END:-whisper}" \
+  "$work/e2e" 127.0.0.1 "$port" "$code" "$fp" "$out"
 echo "--- tmux"
 for font in 0 1 2; do
   "$work/tmux_test" "$out/10-tmux-$font.ppm" "$font"

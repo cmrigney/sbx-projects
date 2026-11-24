@@ -32,11 +32,12 @@ func init() {
 }
 
 type fixture struct {
-	srv   *httptest.Server
-	devs  *Devices
-	token string
-	p     store.Project
-	st    *store.Store
+	srvHandler *Server
+	srv        *httptest.Server
+	devs       *Devices
+	token      string
+	p          store.Project
+	st         *store.Store
 }
 
 func newFixture(t *testing.T, seeds []sbx.MockSeed) *fixture {
@@ -65,9 +66,10 @@ func newFixtureWith(t *testing.T, seeds []sbx.MockSeed, wrap func(*sbx.Mock) sbx
 	go mon.Run(ctx)
 
 	devs, _ := LoadDevices(filepath.Join(t.TempDir(), "devices.json"))
-	srv := httptest.NewTLSServer((&Server{Monitor: mon, Devices: devs, ID: "abc", Name: "mac"}).Handler())
+	handler := &Server{Monitor: mon, Devices: devs, ID: "abc", Name: "mac"}
+	srv := httptest.NewTLSServer(handler.Handler())
 	t.Cleanup(srv.Close)
-	f := &fixture{srv: srv, devs: devs, p: p, st: st}
+	f := &fixture{srv: srv, srvHandler: handler, devs: devs, p: p, st: st}
 	code := devs.OpenPairing(time.Minute, nil)
 	var res struct{ Token string }
 	if st := f.do(t, "POST", "/v1/pair", `{"code":"`+code[:4]+"-"+code[4:]+`","device":"Phone"}`, &res); st != 200 || res.Token == "" {
