@@ -69,8 +69,11 @@ You don't need a keyboard to finish: double-tap **A** to press Enter, or hold **
 which clears the prompt. Ctrl+C goes to the session whatever it's doing, so holding B also
 interrupts a working agent.
 
+Say "forward slash" to type `/`. "Forward slash compact" becomes `/compact`, and "src forward slash
+main" becomes `src/main`.
+
 The New sandbox form works the same way on its text fields. Hold **B** to clear a field and
-double-tap **A** to move on. Spoken branch and kit names become `a-slug-like-this`, and a pull
+double-tap **A** to move on. Spoken branch and kit names become `a-slug-like-this`, branches can include `/`, and a pull
 request field keeps only the number.
 
 Audio stays on your network and is deleted from the Mac after it's transcribed.

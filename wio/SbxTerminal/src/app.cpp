@@ -1174,13 +1174,21 @@ void App::insertTranscript(const char *spoken) {
     needsDraw_ = true;
     return;
   }
-  bool wantDash = !pr && textCursor_ > 0 && f.text[textCursor_ - 1] != '-';
+  const auto afterWord = [&] {
+    return !pr && textCursor_ > 0 && f.text[textCursor_ - 1] != '-' && f.text[textCursor_ - 1] != '/';
+  };
+  bool wantDash = afterWord();
   for (const char *t = spoken; *t; t++) {
     char c = *t;
     if (c >= 'A' && c <= 'Z') c += 32;
+    if (c == '/' && f.id == FIELD_VALUE && !pr) {  // branches like feature/login
+      insertChar(f.text, f.cap, textCursor_, c);
+      wantDash = false;
+      continue;
+    }
     const bool digit = c >= '0' && c <= '9';
     if (pr ? !digit : !(digit || (c >= 'a' && c <= 'z'))) {
-      wantDash = !pr && textCursor_ > 0 && f.text[textCursor_ - 1] != '-';
+      wantDash = afterWord();
       continue;
     }
     if (wantDash) insertChar(f.text, f.cap, textCursor_, '-');

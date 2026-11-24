@@ -125,6 +125,28 @@ func (w *Whisper) Transcribe(ctx context.Context, adpcm []byte) (string, error) 
 // [BLANK_AUDIO] or (wind blowing).
 var nonSpeech = regexp.MustCompile(`^(\[[^\]]*\]|\([^)]*\)|\*[^*]*\*)$`)
 
+// Whisper writes a spoken symbol out as words.
+var (
+	quotedSlash = regexp.MustCompile(`(?i)\b(?:open[\s-]*)?quote[,.:]?\s+forward[\s-]*slash[,.]?\s+(?:(?:end|close)[\s-]*quote|unquote)\b`)
+	spokenSlash = regexp.MustCompile(`(?i)\s*\bforward[\s-]*slash\b(?:[.,!?;:](?:\s|$))?\s*`)
+)
+
+// translateSymbols turns "forward slash" into /, joining the words on either
+// side, so "src forward slash main" is src/main. A lone command like
+// "Forward slash compact." loses the period Whisper adds, which would stop it
+// working as a slash command.
+func translateSymbols(text string) string {
+	out := quotedSlash.ReplaceAllString(text, `"/"`)
+	out = spokenSlash.ReplaceAllString(out, "/")
+	if out != text && strings.HasPrefix(out, "/") && !strings.Contains(out, " ") {
+		out = strings.TrimRight(out, ".,!?;:")
+		if out == "" {
+			out = "/"
+		}
+	}
+	return out
+}
+
 // CleanText makes Whisper's output safe to type into a terminal: one line,
 // with no control characters, so it can't press Enter or send an escape
 // sequence, and of a bounded length.
@@ -146,7 +168,7 @@ func CleanText(out string) string {
 		}
 		return r
 	}, joined)
-	joined = strings.Join(strings.Fields(joined), " ")
+	joined = translateSymbols(strings.Join(strings.Fields(joined), " "))
 	if len(joined) > maxText {
 		cut := maxText
 		for cut > 0 && !utf8.RuneStart(joined[cut]) {

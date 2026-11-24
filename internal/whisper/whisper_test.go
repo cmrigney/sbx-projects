@@ -58,3 +58,22 @@ func TestWAVHeader(t *testing.T) {
 		t.Fatal("wrong rate or data size")
 	}
 }
+
+func TestCleanTextTranslatesForwardSlash(t *testing.T) {
+	for in, want := range map[string]string{
+		"Forward slash.":                           "/",
+		"Forward slash compact.":                   "/compact",
+		"src forward slash main forward slash app": "src/main/app",
+		"Look in src forward-slash main.":          "Look in src/main.",
+		`Type "forward slash" now.`:                `Type "/" now.`,
+		"Type quote forward slash end quote now":   `Type "/" now`,
+		"Quote, forward slash, end quote":          `"/"`,
+		"quote forward slash unquote":              `"/"`,
+		"Move forward. Slash the budget.":          "Move forward. Slash the budget.",
+		"a forwardslasher":                         "a forwardslasher",
+	} {
+		if got := CleanText(in); got != want {
+			t.Errorf("CleanText(%q) = %q, want %q", in, got, want)
+		}
+	}
+}
