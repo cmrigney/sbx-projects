@@ -27,6 +27,7 @@ import (
 	"github.com/cmrigney/sbx-projects/internal/core"
 	"github.com/cmrigney/sbx-projects/internal/store"
 	"github.com/cmrigney/sbx-projects/internal/webui"
+	"github.com/cmrigney/sbx-projects/internal/whisper"
 )
 
 const pairFor = 5 * time.Minute
@@ -35,6 +36,7 @@ const apiUsage = `Usage:
   sbx-projects api [flags]           serve the API to the iOS app and the web app
   sbx-projects api devices           list paired devices
   sbx-projects api devices rm NAME   sign a device out
+  sbx-projects api whisper           set up voice dictation for the Wio Terminal
 
 Flags:
 `
@@ -49,6 +51,8 @@ func runAPICmd(args []string) error {
 	listen := fs.String("listen", ":7443", "address to listen on")
 	projectsDir := fs.String("projects-dir", "", "folder the apps make new projects in (default ~/Projects)")
 	pair := fs.Bool("pair", false, "show a code to pair a new device")
+	whisperBin := fs.String("whisper-bin", "whisper-cli", "whisper.cpp command used for dictation")
+	whisperModel := fs.String("whisper-model", "", "whisper.cpp model used for dictation (default: the one api whisper downloads)")
 	host, _ := os.Hostname()
 	name := fs.String("name", strings.TrimSuffix(host, ".local"), "name the app shows for this machine")
 	logPath := fs.String("log", os.Getenv("SBX_PROJECTS_LOG"), `debug log file; empty for a new one in the temp directory, "off" for none`)
@@ -65,6 +69,15 @@ func runAPICmd(args []string) error {
 	if fs.Arg(0) == "devices" {
 		return devicesCmd(devices, fs.Args()[1:])
 	}
+	if *whisperModel == "" {
+		*whisperModel = filepath.Join(dir, "whisper", whisper.ModelFile)
+	}
+	speech := whisper.New(*whisperBin, *whisperModel)
+	if fs.Arg(0) == "whisper" && fs.NArg() == 1 {
+		ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
+		defer stop()
+		return whisper.Setup(ctx, speech, os.Stdout)
+	}
 	if fs.NArg() > 0 {
 		fs.Usage()
 		os.Exit(2)
@@ -76,7 +89,7 @@ func runAPICmd(args []string) error {
 	}
 	defer closer.Close()
 	slog.Info("starting api", "args", args, "db", *dbPath, "sbx", *sbxBin, "demo", *demo, "listen", *listen, "os", runtime.GOOS, "arch", runtime.GOARCH)
-	if err := serveAPI(devices, dir, *dbPath, *sbxBin, *demo, *listen, *pair, *name, path, *projectsDir); err != nil {
+	if err := serveAPI(devices, dir, *dbPath, *sbxBin, *demo, *listen, *pair, *name, path, *projectsDir, speech); err != nil {
 		slog.Error("exiting", "err", err)
 		if path != "" {
 			err = fmt.Errorf("%w; details in %s", err, path)
@@ -87,7 +100,7 @@ func runAPICmd(args []string) error {
 	return nil
 }
 
-func serveAPI(devices *api.Devices, dir, dbPath, sbxBin string, demo bool, listen string, pair bool, name, logPath, projectsDir string) error {
+func serveAPI(devices *api.Devices, dir, dbPath, sbxBin string, demo bool, listen string, pair bool, name, logPath, projectsDir string, speech *whisper.Whisper) error {
 	st, be, err := openBackend(dbPath, sbxBin, demo)
 	if err != nil {
 		return err
@@ -109,7 +122,7 @@ func serveAPI(devices *api.Devices, dir, dbPath, sbxBin string, demo bool, liste
 			return err
 		}
 	}
-	srv := &api.Server{Monitor: mon, Devices: devices, ID: fp[:16], Name: name, ProjectsDir: projectsDir}
+	srv := &api.Server{Monitor: mon, Devices: devices, ID: fp[:16], Name: name, ProjectsDir: projectsDir, Speech: speech}
 
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
@@ -137,6 +150,11 @@ func serveAPI(devices *api.Devices, dir, dbPath, sbxBin string, demo bool, liste
 	}
 	if demo {
 		fmt.Println("  Serving demo data")
+	}
+	if speech.Ready() {
+		fmt.Println("  Dictation ready")
+	} else {
+		fmt.Println("  Dictation off. Run sbx-projects api whisper to set it up.")
 	}
 	if logPath != "" {
 		fmt.Printf("  Debug log at %s\n", logPath)

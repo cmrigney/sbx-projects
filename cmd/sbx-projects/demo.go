@@ -84,7 +84,7 @@ func seedDemo(st *store.Store) *sbx.Mock {
 				ev(20, "ev", "SessionStart", "reason", "startup"),
 				ev(20, "ev", "UserPromptSubmit", "prompt", "Review the pull request checked out on this branch."),
 				ev(14, "ev", "PreToolUse", "tool", "Bash", "cmd", "go test ./cmd/...", "desc", "Run the command tests"),
-				ev(6, "ev", "Stop", "msg", "Drafted 3 review comments. The error drops the skill reference when the registry request times out."),
+				ev(6, "ev", "Stop", "msg", "Drafted 3 review comments on https://github.com/cmrigney/skill-share/pull/4127. The error drops the skill reference when the registry request times out."),
 			},
 		}},
 		{skills, "Resolve skill paths on Windows", sbx.MockSeed{

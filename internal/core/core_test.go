@@ -36,7 +36,7 @@ func TestSlugAndDigits(t *testing.T) {
 			t.Errorf("Slug(%q) = %q, want %q", in, got, want)
 		}
 	}
-	for in, want := range map[string]string{"#4127": "4127", "https://github.com/cmrigney/skill-share/pull/4127": "4127", "nope": "0"} {
+	for in, want := range map[string]string{"#4127": "4127", "https://github.com/cmrigney/skill-share/pull/4127": "4127", "https://github.com/org2/repo3/pull/45/files": "45", "nope": "0"} {
 		if got := Digits(in); got != want {
 			t.Errorf("Digits(%q) = %q, want %q", in, got, want)
 		}
