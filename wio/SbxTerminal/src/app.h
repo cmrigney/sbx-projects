@@ -14,6 +14,7 @@ class App {
 
   // For tests.
   const Grid &screen() const { return *activeGrid(); }
+  bool menuOpen() const { return menuOpen_; }
 
  private:
   enum View : uint8_t {
@@ -79,7 +80,7 @@ class App {
   void finishPairing();
   void loadHome();
   void loadSandboxes();
-  void openNewForm(int projectIndex);
+  void openNewForm(int projectIndex, const char *pullRequest = nullptr);
   void loadOptions();
   void buildNewForm();
   void buildServerForm();
@@ -96,6 +97,13 @@ class App {
   void terminalClosed();
   void wheel(bool up, int notches);
   void drawTerminalBar();
+  void openMenu();
+  void closeMenu();
+  void handleMenu(const Input &in);
+  void drawMenu();
+  void requestReply(bool review);
+  void pasteReply();
+  void openReviewForm();
   void startDictation();
   void finishDictation();
   void cancelDictation();
@@ -192,4 +200,15 @@ class App {
   uint32_t aAt_ = 0;
   bool bPending_ = false;  // B was tapped once in an agent's terminal
   uint32_t bAt_ = 0;
+
+  // The terminal's 5-way menu, drawn over the bottom rows while the session keeps running.
+  enum MenuRequest : uint8_t { REQ_NONE, REQ_COPY, REQ_REVIEW };
+  bool menuOpen_ = false, menuDirty_ = false;
+  uint8_t menuSel_ = 0;
+  MenuRequest request_ = REQ_NONE;
+  uint32_t requestAt_ = 0;
+  char clipboard_[1002] = "";  // the copied reply; kept across sandboxes until a restart
+  bool reviewReady_ = false;
+  int64_t reviewProject_ = -1;
+  char reviewUrl_[120] = "";
 };

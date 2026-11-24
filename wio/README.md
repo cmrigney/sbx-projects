@@ -42,7 +42,7 @@ arduino-cli compile --upload --fqbn Seeeduino:samd:seeed_wio_terminal -p <port> 
 | --- | --- | --- |
 | 5-way up / down | Move | Scroll one step |
 | 5-way left / right | Back / open, or change a value | Scroll one page |
-| 5-way press | Select | Return to the live screen |
+| 5-way press | Select | Open the actions menu, or return to the live screen after scrolling |
 | Button C (left) | Back | Detach; the agent keeps running |
 | Button B (middle) | New sandbox | Cancel dictation. Restart, after the keyboard is lost |
 | Double-tap B | | Esc, when attached to an agent |
@@ -78,6 +78,18 @@ double-tap **A** to move on. Spoken branch and kit names become `a-slug-like-thi
 request field keeps only the number.
 
 Audio stays on your network and is deleted from the Mac after it's transcribed.
+
+## Actions menu
+
+Press the 5-way switch in a terminal to open the menu. Move with up and down, press to choose, and
+press **C** to close it.
+
+- **Review PR in new sandbox** finds the last pull request link in the agent's last reply and opens
+  the New sandbox form with it filled in and Create selected. Double-tap **A** to create it. With the
+  Task left empty, the agent reviews the PR. The link must be on the same repository as the project.
+- **Copy last reply** keeps the agent's last reply on the Wio, up to 1,000 bytes, until it restarts.
+- **Paste copied reply** types it at the prompt of any sandbox without pressing Enter. It's flattened
+  to one line so that pasting can't submit it.
 
 ## Text size
 

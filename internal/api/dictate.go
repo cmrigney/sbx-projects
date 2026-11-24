@@ -43,14 +43,17 @@ type dictation struct {
 	cancel context.CancelFunc
 }
 
-func (d *dictation) reply(v map[string]string) {
+// writeTextJSON sends a JSON text frame.
+func writeTextJSON(ctx context.Context, c *websocket.Conn, v any) {
 	var b bytes.Buffer
 	enc := json.NewEncoder(&b)
 	enc.SetEscapeHTML(false) // the Wio's reply buffer is small
 	if enc.Encode(v) == nil {
-		_ = d.conn.Write(d.ctx, websocket.MessageText, bytes.TrimSpace(b.Bytes()))
+		_ = c.Write(ctx, websocket.MessageText, bytes.TrimSpace(b.Bytes()))
 	}
 }
+
+func (d *dictation) reply(v map[string]string) { writeTextJSON(d.ctx, d.conn, v) }
 
 func (d *dictation) fail(message string) {
 	d.reply(map[string]string{"type": "dictate-error", "message": message})

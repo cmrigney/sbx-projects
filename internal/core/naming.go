@@ -51,6 +51,10 @@ func Slug(v string) string {
 
 // Digits is the PR number in "#4127", "4127" or a pull request URL.
 func Digits(v string) string {
+	// A URL's owner or repository can have digits of its own.
+	if _, after, ok := strings.Cut(v, "/pull/"); ok {
+		v = after
+	}
 	var b strings.Builder
 	for _, r := range v {
 		if r >= '0' && r <= '9' {

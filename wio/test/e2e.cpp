@@ -309,6 +309,58 @@ int main(int argc, char **argv) {
   r.p.press(BTN_C);
   CHECK(r.waitFor("All sandboxes"), "leaves the form");  // opened from all sandboxes
 
+  // The 5-way menu: copy a reply, paste it, and start a review of the PR it links to.
+  r.p.press(KEY_ENTER);
+  CHECK(r.waitFor("Enter  C back"), "opens the list for the menu");
+  bool found = false;
+  for (int i = 0; i < 16 && !found; i++) {
+    for (int d = 0; d < i; d++) r.p.press(KEY_DOWN);  // going back returns to the top
+    r.run();
+    r.p.press(KEY_ENTER);
+    r.waitFor("Attach to agent");
+    found = r.shows("claude-pr-4127");
+    if (!found) {
+      r.p.press(KEY_ESC);
+      r.waitFor("Enter  C back");
+    }
+  }
+  CHECK(found, "finds the sandbox with a PR in its reply");
+  r.p.press(KEY_ENTER);
+  CHECK(r.waitFor("demo: sbx exec", 15000), "attaches for the menu");
+  r.run(300);
+  r.p.press(SW_PRESS);
+  r.run();
+  CHECK(r.app->menuOpen(), "the 5-way press opens the menu");
+  r.shot("23-menu");
+  r.p.press(BTN_C);
+  r.run();
+  CHECK(!r.app->menuOpen() && r.shows("demo: sbx exec"), "C closes the menu and stays attached");
+  r.p.press(SW_PRESS);
+  r.p.press(SW_UP);
+  r.p.press(SW_PRESS);  // wraps round to paste, with nothing copied
+  CHECK(r.waitFor("Nothing copied yet"), "says when there's nothing to paste");
+  r.p.press(SW_PRESS);
+  r.p.press(SW_DOWN);
+  r.p.press(SW_PRESS);
+  CHECK(r.waitFor("Copied"), "copies the last reply");
+  r.run(200);
+  r.p.press(SW_PRESS);
+  r.p.press(SW_UP);
+  r.p.press(SW_PRESS);
+  CHECK(r.waitFor("Drafted 3"), "pastes the reply at the prompt");
+  CHECK(!r.shows("Detached"), "pasting doesn't press Enter");
+  r.shot("24-pasted");
+  r.run(300);
+  r.p.press(SW_PRESS);
+  r.p.press(SW_PRESS);
+  CHECK(r.waitFor("Pull request", 25000), "opens a PR form from the menu");
+  CHECK(r.shows("pull/4127"), "fills in the PR link");
+  CHECK(r.shows("AA confirm"), "has the Create button ready");
+  r.shot("25-review-form");
+  r.p.press(BTN_A);
+  r.p.press(BTN_A);
+  CHECK(r.waitFor("Attach to agent", 15000) && r.shows("claude-pr-4127-2"), "double-tapping A creates the review sandbox");
+
   printf("%s\n", failures ? "FAILED" : "PASSED");
   return failures ? 1 : 0;
 }

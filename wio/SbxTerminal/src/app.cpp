@@ -31,6 +31,10 @@ static const uint32_t STATUS_MS = 6000;
 static const uint32_t TYPE_EVERY_MS = 25;
 static const size_t TYPE_BYTES = 12;  // about 480 characters a second
 static const uint32_t DOUBLE_TAP_MS = 350;
+static const uint32_t REQUEST_WAIT_MS = 8000;
+static const int MENU_ITEMS = 3;
+static const int MENU_ROWS = MENU_ITEMS + 1;  // with its title
+static const char *const MENU_LABELS[MENU_ITEMS] = {"Review PR in new sandbox", "Copy last reply", "Paste copied reply"};
 
 static uint16_t stateColor(const SandboxInfo &s) {
   if (!strcmp(s.state, "needsYou")) return C_WARN;
@@ -281,10 +285,11 @@ void App::buildServerForm() {
   textCursor_ = strlen(fields_[focus_].text);
 }
 
-void App::openNewForm(int projectIndex) {
+void App::openNewForm(int projectIndex, const char *pullRequest) {
   newProject_ = projectIndex < 0 ? 0 : projectIndex;
   task_[0] = value_[0] = newKit_[0] = 0;
-  sourceIndex_ = 0;
+  sourceIndex_ = pullRequest ? 1 : 0;
+  if (pullRequest) snprintf(value_, sizeof(value_), "%s", pullRequest);
   formError_[0] = 0;
   if (projectCount_ == 0) {
     notice("Add a project on the Mac first.", V_PROJECTS);
@@ -472,6 +477,8 @@ void App::attach(const char *name, bool shell) {
   }
   vt_.reset();
   scrollDepth_ = 0;
+  menuOpen_ = false;
+  request_ = REQ_NONE;
   termOpen_ = true;
   blinkOn_ = true;
   lastBlink_ = p_.ms();
@@ -492,6 +499,7 @@ void App::pumpTerminal() {
     if (char *json = ws_.text()) {
       handleServerMessage(json);
       ws_.clearText();
+      if (reviewReady_) return;  // tick leaves the terminal for the form
       continue;
     }
     if (n == 0) break;
@@ -600,6 +608,10 @@ void App::cancelDictation() {
 }
 
 void App::pumpDictation() {
+  if (request_ != REQ_NONE && p_.ms() - requestAt_ > REQUEST_WAIT_MS) {
+    request_ = REQ_NONE;
+    dictationStatus("The Mac didn't answer");
+  }
   if (dictation_ == DICT_WAITING && p_.ms() - dictationAt_ > TRANSCRIBE_WAIT_MS) {
     dictation_ = DICT_IDLE;
     dictationStatus("The Mac didn't answer");
@@ -630,6 +642,36 @@ void App::handleServerMessage(char *json) {
   JsonDocument doc;
   if (deserializeJson(doc, json)) return;
   const char *type = doc["type"] | "";
+  if (!strcmp(type, "reply") || !strcmp(type, "review") || !strcmp(type, "reply-error")) {
+    const MenuRequest asked = request_;
+    if (asked == REQ_NONE) return;  // it took too long, and the Wio has moved on
+    request_ = REQ_NONE;
+    if (!strcmp(type, "reply-error")) {
+      dictationStatus(doc["message"] | "Couldn't read the reply");
+    } else if (asked == REQ_COPY && !strcmp(type, "reply")) {
+      // Control characters are dropped here too: this gets typed into a live terminal.
+      size_t n = 0;
+      for (const char *t = doc["text"] | ""; *t && n + 1 < sizeof(clipboard_); t++) {
+        const uint8_t c = (uint8_t)*t;
+        if (c >= 0x20 && c != 0x7F) clipboard_[n++] = *t;
+      }
+      clipboard_[n] = 0;
+      const unsigned copied = doc["copied"] | 0, total = doc["total"] | 0;
+      char status[32];
+      if (copied < total) snprintf(status, sizeof(status), "Copied %u of %u chars", copied, total);
+      else snprintf(status, sizeof(status), "Copied %u chars", copied);
+      dictationStatus(status);
+    } else if (asked == REQ_REVIEW && !strcmp(type, "review")) {
+      if (dictation_ != DICT_IDLE) {
+        dictationStatus("Finish dictating first");
+      } else {
+        snprintf(reviewUrl_, sizeof(reviewUrl_), "%s", doc["url"] | "");
+        reviewProject_ = doc["projectId"] | (int64_t)-1;
+        reviewReady_ = reviewUrl_[0] != 0;
+      }
+    }
+    return;
+  }
   if (dictation_ != DICT_WAITING) return;  // cancelled while it was on its way
   if (!strcmp(type, "dictate-error")) {
     dictation_ = DICT_IDLE;
@@ -718,6 +760,8 @@ bool App::typeTranscript(size_t maxBytes) {
 }
 
 void App::terminalClosed() {
+  menuOpen_ = false;
+  request_ = REQ_NONE;
   endMic();
   dictation_ = DICT_IDLE;
   transcriptPos_ = transcriptLen_ = 0;
@@ -737,6 +781,8 @@ void App::terminalClosed() {
 }
 
 void App::detach() {
+  menuOpen_ = false;
+  request_ = REQ_NONE;
   endMic();
   dictation_ = DICT_IDLE;
   transcriptPos_ = transcriptLen_ = 0;
@@ -771,7 +817,104 @@ void App::wheel(bool up, int notches) {
   if (scrollDepth_ < 0) scrollDepth_ = 0;
 }
 
+void App::openMenu() {
+  menuOpen_ = menuDirty_ = true;
+  menuSel_ = 0;
+}
+
+void App::closeMenu() {
+  menuOpen_ = false;
+  // The session kept drawing underneath.
+  for (int r = gridRows - MENU_ROWS; r < gridRows; r++) vt_.grid()->dirty |= 1UL << r;
+}
+
+void App::handleMenu(const Input &in) {
+  if (isUp(in.key)) {
+    menuSel_ = (menuSel_ + MENU_ITEMS - 1) % MENU_ITEMS;
+    menuDirty_ = true;
+  } else if (isDown(in.key)) {
+    menuSel_ = (menuSel_ + 1) % MENU_ITEMS;
+    menuDirty_ = true;
+  } else if (isBack(in.key) || in.key == SW_LEFT) {
+    closeMenu();
+  } else if (isSelect(in.key) || in.key == SW_RIGHT) {
+    const uint8_t chosen = menuSel_;
+    closeMenu();
+    if (chosen == 2) pasteReply();
+    else requestReply(chosen == 0);
+  }
+}
+
+void App::drawMenu() {
+  menuDirty_ = false;
+  Cell line[MAX_COLS];
+  const int top = gridRows - MENU_ROWS;
+  for (int i = 0; i < MENU_ROWS; i++) {
+    const bool on = i > 0 && i - 1 == menuSel_;
+    const uint16_t bg = on ? C_SELECT : C_PANEL;
+    const bool dim = i == MENU_ITEMS && !clipboard_[0];
+    const uint16_t fg = i == 0 ? C_ACCENT : dim ? C_MUTED : C_TEXT;
+    const char *s = i == 0 ? "Actions  Press select  C close" : MENU_LABELS[i - 1];
+    for (int c = 0; c < gridCols; c++) line[c] = Cell{' ', fg, bg, 0};
+    for (int c = 0; s[c] && c + 1 < gridCols; c++) line[c + 1].ch = (uint8_t)s[c];
+    renderRow(line, -1, strip_);
+    p_.pushStrip(screenTop + (top + i) * stripH, stripH, strip_);
+  }
+}
+
+void App::requestReply(bool review) {
+  if (!ws_.sendText(review ? "{\"type\":\"reply-review\"}" : "{\"type\":\"reply-copy\"}")) {
+    terminalClosed();
+    return;
+  }
+  request_ = review ? REQ_REVIEW : REQ_COPY;
+  requestAt_ = p_.ms();
+  dictationStatus(review ? "Finding the PR" : "Copying the reply");
+}
+
+// Types the copied reply at the prompt, at dictation's pace and without pressing Enter.
+void App::pasteReply() {
+  if (!clipboard_[0]) {
+    dictationStatus("Nothing copied yet");
+    return;
+  }
+  if (!typeTranscript(sizeof(transcript_))) {  // anything still being typed goes first
+    terminalClosed();
+    return;
+  }
+  const size_t n = strlen(clipboard_);
+  memcpy(transcript_, clipboard_, n);
+  transcriptPos_ = 0;
+  transcriptLen_ = n;
+  dictationStatus("Pasted");
+}
+
+// A new sandbox on the PR, with the Create button ready. With no task, the Mac asks for a review.
+void App::openReviewForm() {
+  int index = -1;
+  for (int i = 0; i < projectCount_; i++) {
+    if (projects_[i].id == reviewProject_) index = i;
+  }
+  detach();
+  dictationStatus_[0] = 0;  // "Finding the PR" would otherwise hide the form's hints
+  if (index < 0) {
+    notice("This sandbox's project isn't loaded. Refresh the projects and try again.", V_DETAIL);
+    return;
+  }
+  openNewForm(index, reviewUrl_);
+  if (view_ != V_NEW) return;
+  for (int i = 0; i < fieldCount_; i++) {
+    if (fields_[i].id == FIELD_CREATE) focus_ = i;
+  }
+  textCursor_ = 0;
+  needsDraw_ = true;
+}
+
 void App::handleTerminal(const Input &in) {
+  if (menuOpen_) {
+    handleMenu(in);
+    return;
+  }
   switch (in.key) {
     case BTN_C:
       detach();
@@ -830,8 +973,12 @@ void App::handleTerminal(const Input &in) {
       return;
     case SW_PRESS:
       // Back to the live screen. Extra wheel events past the bottom do nothing.
-      if (scrollDepth_ > 0) wheel(false, scrollDepth_ + 1);
-      scrollDepth_ = 0;
+      if (scrollDepth_ > 0) {
+        wheel(false, scrollDepth_ + 1);
+        scrollDepth_ = 0;
+      } else if (dictation_ == DICT_IDLE && request_ == REQ_NONE) {
+        openMenu();
+      }
       return;
     default:
       break;
@@ -904,6 +1051,10 @@ void App::tick() {
   }
 
   if (view_ == V_TERMINAL && termOpen_) pumpTerminal();
+  if (reviewReady_) {
+    reviewReady_ = false;
+    if (view_ == V_TERMINAL && termOpen_) openReviewForm();
+  }
   if (view_ == V_TERMINAL && termOpen_) pumpDictation();
   if (view_ == V_NEW && dictation_ != DICT_IDLE) {
     pumpFormDictation();
@@ -1391,9 +1542,11 @@ void App::flush() {
   g->dirty = 0;
   for (int r = 0; bits; r++, bits >>= 1) {
     if (!(bits & 1)) continue;
+    if (term && menuOpen_ && r >= gridRows - MENU_ROWS) continue;
     renderRow(g->cells[r], r == cursorRow && blinkOn_ ? cursorCol : -1, strip_);
     p_.pushStrip(screenTop + r * stripH, stripH, strip_);
   }
+  if (term && menuOpen_ && menuDirty_) drawMenu();
 }
 
 void App::draw() {

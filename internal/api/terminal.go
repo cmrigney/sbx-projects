@@ -136,7 +136,7 @@ func (s *Server) terminal(w http.ResponseWriter, r *http.Request) {
 		}
 	}()
 
-	// Keystrokes, resizes and dictation.
+	// Keystrokes, resizes, dictation and the Wio's menu.
 	dictate := &dictation{speech: s.Speech, conn: c, ctx: ctx}
 	go func() {
 		defer cancel()
@@ -156,9 +156,12 @@ func (s *Server) terminal(w http.ResponseWriter, r *http.Request) {
 			if json.Unmarshal(b, &msg) != nil {
 				continue
 			}
-			if msg.Type == "resize" {
+			switch msg.Type {
+			case "resize":
 				_ = pty.Setsize(ptmx, winsize(msg.Cols, msg.Rows))
-			} else {
+			case "reply-copy", "reply-review":
+				s.replyAction(ctx, c, r, msg.Type)
+			default:
 				dictate.handle(msg)
 			}
 		}

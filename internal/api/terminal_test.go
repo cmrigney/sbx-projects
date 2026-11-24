@@ -7,6 +7,7 @@ import (
 	"strings"
 	"testing"
 	"time"
+	"unicode/utf8"
 
 	"github.com/coder/websocket"
 
@@ -225,6 +226,67 @@ func TestCancelledDictationIsNotTranscribed(t *testing.T) {
 	sendJSON(t, c, `{"type":"dictate-end"}`)
 	if got := <-speech.got; string(got) != "\x04\x05" {
 		t.Fatalf("audio = %v", got)
+	}
+}
+
+func TestPlainReplyIsOneSafeLine(t *testing.T) {
+	text, copied, total := plainReply("Done.\n\n- one\r\n- \x1b[31mtwo‮\x7f")
+	if text != "Done. - one - [31mtwo" || copied != total || total != len(text) {
+		t.Fatalf("got %q, %d of %d", text, copied, total)
+	}
+	for _, long := range []string{strings.Repeat("é", 900), strings.Repeat(`"`, 900), strings.Repeat("x", 1500)} {
+		text, copied, total := plainReply(long)
+		encoded := len(text) + strings.Count(text, `"`)
+		if !utf8.ValidString(text) || len(text) > maxCopied || encoded > maxCopiedJSON || copied >= total && total > maxCopied {
+			t.Fatalf("cut badly: %d bytes, %d encoded, %d of %d", len(text), encoded, copied, total)
+		}
+	}
+}
+
+func TestLastPRLinkIsOnTheProjectsRepo(t *testing.T) {
+	const remote = "github.com/me/app"
+	for in, want := range map[string]string{
+		"Opened https://github.com/me/app/pull/7.":                                  "https://github.com/me/app/pull/7",
+		"[#8](https://github.com/ME/App/pull/8/files)":                              "https://github.com/ME/App/pull/8",
+		"https://github.com/me/app/pull/1 then https://github.com/me/app/pull/2":    "https://github.com/me/app/pull/2",
+		"https://github.com/me/app/pull/3 and https://github.com/other/lib/pull/99": "https://github.com/me/app/pull/3",
+		"https://github.com/other/lib/pull/99":                                      "",
+		"no link":                                                                   "",
+	} {
+		if got := lastPRLink(in, remote); got != want {
+			t.Errorf("lastPRLink(%q) = %q, want %q", in, got, want)
+		}
+	}
+}
+
+func TestTerminalMenuRequests(t *testing.T) {
+	f := newFixture(t, []sbx.MockSeed{{Name: "claude-a", Agent: "claude", Workspace: "/src/repo", Running: true, AgentUp: true,
+		Events: []map[string]any{{"ts": time.Now().Unix(), "ev": "Stop", "msg": "Opened\nhttps://github.com/me/app/pull/7"}}}})
+	f.waitFor(t, func(m map[string]SandboxView) bool { return m["claude-a"].AgentUp })
+	m := f.srvHandler.Monitor
+	m.mu.Lock()
+	for i := range m.projects {
+		m.projects[i].Remote = "github.com/me/app"
+	}
+	m.mu.Unlock()
+	var reply ReplyView
+	deadline := time.Now().Add(5 * time.Second)
+	for f.do(t, "GET", "/v1/sandboxes/claude-a/reply", "", &reply) != 200 && time.Now().Before(deadline) {
+		time.Sleep(20 * time.Millisecond)
+	}
+	c, _, err := f.attach(t, "claude-a")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer c.CloseNow()
+	readUntil(t, c, "Press enter")
+	sendJSON(t, c, `{"type":"reply-copy"}`)
+	if got := nextText(t, c); !strings.Contains(got, `"text":"Opened https://github.com/me/app/pull/7"`) || !strings.Contains(got, `"type":"reply"`) {
+		t.Fatalf("copy = %s", got)
+	}
+	sendJSON(t, c, `{"type":"reply-review"}`)
+	if got := nextText(t, c); !strings.Contains(got, `"url":"https://github.com/me/app/pull/7"`) || !strings.Contains(got, `"type":"review"`) {
+		t.Fatalf("review = %s", got)
 	}
 }
 
