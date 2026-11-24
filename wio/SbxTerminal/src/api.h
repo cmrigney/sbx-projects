@@ -19,7 +19,8 @@ struct ProjectInfo {
 
 struct SandboxInfo {
   int64_t projectId;
-  char name[48];
+  char name[64];
+  bool nameTooLong;  // cut short, so it could name another sandbox
   char title[64];
   char branch[40];
   char agent[16];
@@ -111,5 +112,6 @@ class Api {
   bool unauthorized_ = false;
 };
 
-// Writes the URL path of a sandbox's endpoint, percent-encoding its name.
-void sandboxPath(char *out, size_t cap, const char *name, const char *suffix);
+// Writes the URL path of a sandbox's endpoint, percent-encoding its name. Returns false, leaving
+// out empty, if it doesn't fit, because a cut name could be another sandbox's.
+bool sandboxPath(char *out, size_t cap, const char *name, const char *suffix);

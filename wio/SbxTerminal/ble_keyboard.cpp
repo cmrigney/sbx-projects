@@ -505,6 +505,7 @@ void handleReport(const Report &r) {
     if (!hidToInput(usage, modifiers, capsLock, in)) continue;
     pushInput(in);
     repeatInput = in;
+    repeatInput.repeat = true;
     repeatUsage = usage;
     repeatAt = millis() + REPEAT_DELAY_MS;
   }

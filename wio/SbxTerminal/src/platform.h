@@ -44,6 +44,7 @@ struct Input {
   Key key;
   uint8_t mods;
   char ch;
+  bool repeat = false;  // sent again because the key or switch is still held
 };
 
 // A byte stream to the server. recv never blocks: it returns 0 when nothing has arrived and a

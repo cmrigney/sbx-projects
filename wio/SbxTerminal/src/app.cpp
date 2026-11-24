@@ -441,7 +441,7 @@ void App::submitNew() {
     return;
   }
   busy("Creating the sandbox");
-  char created[48] = "";
+  char created[sizeof(SandboxInfo::name)] = "";
   if (!api_.create(r, created, sizeof(created))) {
     snprintf(formError_, sizeof(formError_), "%s", api_.error());
     go(V_NEW);
@@ -490,7 +490,12 @@ void App::attach(const char *name, bool shell) {
   busy(shell ? "Opening a shell" : "Attaching");
   char suffix[48], path[128];
   snprintf(suffix, sizeof(suffix), "/terminal?cols=%d&rows=%d%s", gridCols, termRows, shell ? "&shell=1" : "");
-  sandboxPath(path, sizeof(path), name, suffix);
+  if (!sandboxPath(path, sizeof(path), name, suffix)) {
+    snprintf(closedText_, sizeof(closedText_), "The sandbox's name is too long for the Wio.");
+    canReattach_ = false;
+    go(V_CLOSED);
+    return;
+  }
   if (!ws_.open(config_, path)) {
     snprintf(closedText_, sizeof(closedText_), "%s", ws_.error());
     canReattach_ = ws_.closeCode() != 4001;
@@ -1167,8 +1172,10 @@ void App::handle(const Input &in) {
         go(V_DETAIL);
         return;
       }
-      if (isSelect(in.key) && sel_ == DETAIL_DELETE && !armed) {
+      // The right switch opens actions too, and a held key repeats: neither may confirm by itself.
+      if ((isSelect(in.key) || in.key == SW_RIGHT) && sel_ == DETAIL_DELETE && (!armed || in.repeat)) {
         deleteArmed_ = true;
+        if (!armed) needsDraw_ = true;
         return;
       }
       handleList(in, DETAIL_ACTIONS);
@@ -1308,6 +1315,11 @@ void App::activate() {
     case V_SANDBOXES: {
       const int i = visibleSandbox(sel_);
       if (i < 0) return;
+      // Its cut name could be another sandbox's, and the detail view finds sandboxes by name.
+      if (sandboxes_[i].nameTooLong) {
+        notice("This sandbox's name is too long for the Wio. Use the Mac.", V_SANDBOXES);
+        return;
+      }
       snprintf(detailName_, sizeof(detailName_), "%s", sandboxes_[i].name);
       sel_ = top_ = 0;
       go(V_DETAIL);
@@ -1317,6 +1329,10 @@ void App::activate() {
       SandboxInfo *s = selectedSandbox();
       if (!s) {
         notice("That sandbox is gone.", V_SANDBOXES);
+        return;
+      }
+      if (s->nameTooLong) {
+        notice("This sandbox's name is too long for the Wio. Use the Mac.", V_DETAIL);
         return;
       }
       if (sel_ == 0) attach(s->name, false);

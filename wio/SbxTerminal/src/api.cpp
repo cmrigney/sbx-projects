@@ -17,9 +17,13 @@ static void copyStr(char (&dst)[N], const char *src) {
   }
 }
 
-void sandboxPath(char *out, size_t cap, const char *name, const char *suffix) {
+bool sandboxPath(char *out, size_t cap, const char *name, const char *suffix) {
   size_t n = (size_t)snprintf(out, cap, "/v1/sandboxes/");
-  for (const char *s = name; *s && n + 4 < cap; s++) {
+  for (const char *s = name; *s; s++) {
+    if (n + 4 >= cap) {
+      out[0] = 0;
+      return false;
+    }
     const char c = *s;
     if ((c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') || (c >= '0' && c <= '9') || c == '-' ||
         c == '_' || c == '.') {
@@ -29,7 +33,11 @@ void sandboxPath(char *out, size_t cap, const char *name, const char *suffix) {
     }
   }
   out[n] = 0;
-  snprintf(out + n, cap - n, "%s", suffix);
+  if ((size_t)snprintf(out + n, cap - n, "%s", suffix) >= cap - n) {
+    out[0] = 0;
+    return false;
+  }
+  return true;
 }
 
 void Api::readError(int status) {
@@ -136,7 +144,9 @@ int Api::sandboxes(SandboxInfo *out, int max) {
     if (n == max) break;
     SandboxInfo &s = out[n++];
     s.projectId = o["projectId"] | (int64_t)0;
-    copyStr(s.name, o["name"] | "");
+    const char *name = o["name"] | "";
+    copyStr(s.name, name);
+    s.nameTooLong = strlen(name) >= sizeof(s.name);
     copyStr(s.title, o["title"] | "");
     copyStr(s.branch, o["branch"] | "");
     copyStr(s.agent, o["agentLabel"] | "");
@@ -237,13 +247,17 @@ bool Api::create(const NewSandbox &r, char *createdName, size_t cap) {
   JsonDocument doc;
   deserializeJson(doc, http_, DeserializationOption::Filter(filter));
   http_.end();
-  snprintf(createdName, cap, "%s", doc["name"] | "");
+  // An empty name leaves the Wio on the list, rather than on a sandbox it would cut to another's name.
+  if ((size_t)snprintf(createdName, cap, "%s", doc["name"] | "") >= cap) createdName[0] = 0;
   return true;
 }
 
 bool Api::remove(const char *name) {
   char path[128];
-  sandboxPath(path, sizeof(path), name, "");
+  if (!sandboxPath(path, sizeof(path), name, "")) {
+    snprintf(error_, sizeof(error_), "The sandbox's name is too long for the Wio");
+    return false;
+  }
   if (!begin("DELETE", path, nullptr, 202)) return false;
   http_.end();
   return true;
@@ -252,7 +266,10 @@ bool Api::remove(const char *name) {
 bool Api::action(const char *name, const char *verb) {
   char path[128], suffix[16];
   snprintf(suffix, sizeof(suffix), "/%s", verb);
-  sandboxPath(path, sizeof(path), name, suffix);
+  if (!sandboxPath(path, sizeof(path), name, suffix)) {
+    snprintf(error_, sizeof(error_), "The sandbox's name is too long for the Wio");
+    return false;
+  }
   if (!begin("POST", path, nullptr, 202)) return false;
   http_.end();
   return true;

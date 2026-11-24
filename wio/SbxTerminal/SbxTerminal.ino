@@ -265,7 +265,7 @@ class WioPlatform : public Platform {
         return true;
       } else if (down && b.down && b.repeats && (int32_t)(now - b.repeatAt) >= 0) {
         b.repeatAt = now + 110;
-        out = Input{b.key, 0, 0};
+        out = Input{b.key, 0, 0, true};
         return true;
       }
     }

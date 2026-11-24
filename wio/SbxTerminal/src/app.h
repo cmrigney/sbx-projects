@@ -163,7 +163,7 @@ class App {
   SandboxInfo sandboxes_[MAX_SANDBOXES];
   int sandboxCount_ = 0;
   int64_t filterProject_ = -1;  // -1 for all projects
-  char detailName_[48] = "";
+  char detailName_[sizeof(SandboxInfo::name)] = "";
 
   Field fields_[MAX_FIELDS];
   int fieldCount_ = 0, focus_ = 0, textCursor_ = 0, formTop_ = 0;
@@ -179,7 +179,7 @@ class App {
   uint8_t modelIndex_[MAX_AGENTS];
   char newKit_[64] = "";
 
-  char termName_[48] = "";
+  char termName_[sizeof(SandboxInfo::name)] = "";
   bool termShell_ = false, termOpen_ = false;
   bool canReattach_ = true;
   char closedText_[128] = "";

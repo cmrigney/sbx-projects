@@ -83,6 +83,16 @@ int main(int argc, char **argv) {
   const std::string fp = argv[4];
   const std::string dir = argv[5];
 
+  {
+    char path[32];
+    CHECK(sandboxPath(path, sizeof(path), "claude-x", "/stop") && !strcmp(path, "/v1/sandboxes/claude-x/stop"),
+          "builds a sandbox's path");
+    CHECK(!sandboxPath(path, sizeof(path), "claude-a-very-long-name", "") && !path[0],
+          "refuses a name that doesn't fit rather than cutting it to another sandbox's");
+    CHECK(!sandboxPath(path, sizeof(path), "claude-abcd", "/terminal?cols=45") && !path[0],
+          "refuses a suffix that doesn't fit");
+  }
+
   Rig r(dir);
   r.app->begin();
   CHECK(r.waitFor("Test Network"), "shows the Wi-Fi list");
@@ -370,6 +380,15 @@ int main(int argc, char **argv) {
   r.p.press(KEY_UP);
   CHECK(r.waitFor("Delete sandbox") && !r.shows("Press again"), "moving away cancels the delete");
   r.p.press(KEY_DOWN);
+  // The right switch also opens actions, and a held key repeats: neither may delete by itself.
+  r.p.press(SW_RIGHT);
+  CHECK(r.waitFor("Press again to delete"), "the right switch only arms the delete");
+  r.p.keys.push_back(Input{KEY_ENTER, 0, 0, true});
+  r.run(500);
+  CHECK(r.shows("Press again to delete") && r.shows("Attach to agent"), "a repeated Enter doesn't confirm the delete");
+  r.p.press(KEY_UP);
+  r.p.press(KEY_DOWN);
+  CHECK(r.waitFor("Delete sandbox") && !r.shows("Press again"), "moving away disarms it again");
   bool refused = false, deleted = false;
   for (int i = 0; i < 30 && !deleted; i++) {
     r.p.press(KEY_ENTER);
