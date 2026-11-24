@@ -61,8 +61,14 @@ func TestWAVHeader(t *testing.T) {
 
 func TestCleanTextTranslatesForwardSlash(t *testing.T) {
 	for in, want := range map[string]string{
-		"Forward slash.":                           "/",
-		"Forward slash compact.":                   "/compact",
+		"/usage.":                "/usage",
+		" /usage.\n":             "/usage",
+		"src/main.":              "src/main",
+		"/.":                     "/",
+		"Run /usage.":            "Run /usage.",
+		"Done.":                  "Done.",
+		"Forward slash.":         "/",
+		"Forward slash compact.": "/compact",
 		"src forward slash main forward slash app": "src/main/app",
 		"Look in src forward-slash main.":          "Look in src/main.",
 		`Type "forward slash" now.`:                `Type "/" now.`,

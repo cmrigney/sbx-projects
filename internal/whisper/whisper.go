@@ -132,17 +132,15 @@ var (
 )
 
 // translateSymbols turns "forward slash" into /, joining the words on either
-// side, so "src forward slash main" is src/main. A lone command like
-// "Forward slash compact." loses the period Whisper adds, which would stop it
-// working as a slash command.
+// side, so "src forward slash main" is src/main. Text that's a single word
+// with a slash, like /usage. or src/main., loses the punctuation Whisper adds,
+// which would stop it working as a slash command or path. Whisper sometimes
+// writes the slash itself, so this doesn't depend on a translation.
 func translateSymbols(text string) string {
 	out := quotedSlash.ReplaceAllString(text, `"/"`)
 	out = spokenSlash.ReplaceAllString(out, "/")
-	if out != text && strings.HasPrefix(out, "/") && !strings.Contains(out, " ") {
+	if strings.Contains(out, "/") && !strings.Contains(out, " ") {
 		out = strings.TrimRight(out, ".,!?;:")
-		if out == "" {
-			out = "/"
-		}
 	}
 	return out
 }
