@@ -16,8 +16,8 @@ static int failures = 0;
 
 static std::string screenText(const Grid &g) {
   std::string out;
-  for (int r = 0; r < GRID_ROWS; r++) {
-    for (int c = 0; c < GRID_COLS; c++) {
+  for (int r = 0; r < gridRows; r++) {
+    for (int c = 0; c < gridCols; c++) {
       const uint16_t ch = g.cells[r][c].ch;
       out += ch < 0x7F ? (char)ch : '?';
     }
@@ -112,7 +112,7 @@ int main(int argc, char **argv) {
   }
 
   r.p.press(KEY_ENTER);
-  CHECK(r.waitFor("Enter open"), "opens all sandboxes");
+  CHECK(r.waitFor("Enter  C back"), "opens all sandboxes");
   r.shot("05-sandboxes");
   r.p.press(KEY_ENTER);
   CHECK(r.waitFor("Attach to agent"), "opens a sandbox");
@@ -127,10 +127,10 @@ int main(int argc, char **argv) {
   CHECK(r.waitFor("Attach to agent"), "returns to the sandbox");
 
   r.p.press(KEY_ESC);
-  CHECK(r.waitFor("Enter open"), "goes back to the list");
+  CHECK(r.waitFor("Enter  C back"), "goes back to the list");
   r.p.press(BTN_B);
   CHECK(r.waitFor("New sandbox", 25000), "opens the New sandbox form");
-  CHECK(r.shows("Task") && r.shows("Agent") && r.shows("Private clone"), "offers the mobile form's fields");
+  CHECK(r.shows("Task") && r.shows("Agent") && r.shows("Clone"), "offers the mobile form's fields");
   r.p.type("Add a health check");
   r.run();
   r.shot("08-new-sandbox");
@@ -141,6 +141,37 @@ int main(int argc, char **argv) {
   CHECK(r.waitFor("Attach to agent", 15000), "creates the sandbox and opens it");
   CHECK(r.shows("Add a health check"), "the new sandbox has the task as its title");
   r.shot("09-created");
+
+  // Text size, from Settings, saved, and used by the terminal.
+  r.p.press(KEY_ESC);
+  CHECK(r.waitFor("Enter  C back"), "back at the sandbox list");
+  r.p.press(KEY_ESC);
+  CHECK(r.waitFor("All sandboxes"), "back at the projects");
+  for (int i = 0; i < 40; i++) r.p.press(KEY_DOWN);
+  r.p.press(KEY_ENTER);
+  CHECK(r.waitFor("Text size"), "opens Settings");
+  CHECK(r.shows("Small 45x17"), "starts at the small size");
+  r.p.press(KEY_RIGHT);
+  CHECK(r.waitFor("Medium 35x15") && r.p.saved.fontSize == 1, "changes to medium and saves it");
+  r.shot("12-settings-medium");
+  r.p.press(KEY_RIGHT);
+  CHECK(r.waitFor("Large 32x11") && r.p.saved.fontSize == 2, "changes to large and saves it");
+  r.shot("13-settings-large");
+  r.p.press(KEY_ESC);
+  CHECK(r.waitFor("All sandboxes"), "projects fit at the large size");
+  r.shot("14-projects-large");
+  r.p.press(KEY_ENTER);
+  CHECK(r.waitFor("Enter  C back"), "sandboxes fit at the large size");
+  r.shot("15-sandboxes-large");
+  r.p.press(KEY_DOWN);  // past the sandbox made above, which is still being created
+  r.p.press(KEY_ENTER);
+  CHECK(r.waitFor("Attach to agent") && r.shows("Stop sandbox"), "every action fits at the large size");
+  r.shot("16-detail-large");
+  r.p.press(KEY_ENTER);
+  CHECK(r.waitFor("demo: sbx exec", 15000), "attaches at the large size");
+  r.shot("17-terminal-large");
+  r.p.press(BTN_C);
+  CHECK(r.waitFor("Attach to agent"), "detaches at the large size");
 
   printf("%s\n", failures ? "FAILED" : "PASSED");
   return failures ? 1 : 0;

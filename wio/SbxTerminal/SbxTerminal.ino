@@ -60,6 +60,9 @@ struct StoredConfig {
   uint32_t crc;
 };
 
+static_assert(offsetof(Config, fontSize) == 262 && offsetof(StoredConfig, crc) == 272,
+              "saved settings must keep their layout");
+
 static uint32_t crc32(const uint8_t *data, size_t len) {
   uint32_t crc = 0xFFFFFFFFUL;
   for (size_t i = 0; i < len; i++) {
@@ -92,8 +95,12 @@ static bool readStored(const sfud_flash *flash, StoredConfig &s) {
   if (sfud_read(flash, flash->chip.capacity - SECTOR_SIZE, sizeof(s), (uint8_t *)&s) != SFUD_SUCCESS) {
     return false;
   }
-  return s.magic == CONFIG_MAGIC && s.size == sizeof(Config) &&
-         s.crc == crc32((const uint8_t *)&s.config, sizeof(Config));
+  // Settings saved before the text size existed are shorter; the checksum is in the same place.
+  const size_t legacySize = offsetof(Config, fontSize);
+  if (s.magic != CONFIG_MAGIC || (s.size != sizeof(Config) && s.size != legacySize)) return false;
+  if (s.crc != crc32((const uint8_t *)&s.config, s.size)) return false;
+  if (s.size == legacySize) s.config.fontSize = 0;
+  return true;
 }
 
 // The sector is only ever written when it's blank or already ours, so data another sketch keeps
@@ -149,11 +156,13 @@ class WioPlatform : public Platform {
     }
   }
 
-  void pushStrip(int y, uint16_t *pixels) override {
+  void clearScreen(uint16_t color) override { tft.fillScreen(color); }
+
+  void pushStrip(int y, int height, uint16_t *pixels) override {
     // The panel takes the high byte first. On the SAMD51 this library sends memory as it is and
     // ignores setSwapBytes, so the bytes are swapped here.
-    for (int i = 0; i < STRIP_W * STRIP_H; i++) pixels[i] = __builtin_bswap16(pixels[i]);
-    tft.pushImage(0, y, STRIP_W, STRIP_H, pixels);
+    for (int i = 0; i < STRIP_W * height; i++) pixels[i] = __builtin_bswap16(pixels[i]);
+    tft.pushImage(0, y, STRIP_W, height, pixels);
   }
 
   bool poll(Input &out) override {

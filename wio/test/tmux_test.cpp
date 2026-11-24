@@ -1,5 +1,5 @@
 // Runs a real tmux at the Wio's size through the emulator and scrolls it the way the 5-way switch
-// does. usage: tmux_test OUT.ppm
+// does. usage: tmux_test OUT.ppm [FONT]
 #include <fcntl.h>
 #include <poll.h>
 #include <pty.h>
@@ -34,8 +34,8 @@ static void pump(Vt &vt, int ms) {
 
 static std::string text(const Vt &vt) {
   std::string out;
-  for (int r = 1; r < GRID_ROWS; r++) {
-    for (int c = 0; c < GRID_COLS; c++) {
+  for (int r = 1; r < gridRows; r++) {
+    for (int c = 0; c < gridCols; c++) {
       const uint16_t ch = vt.grid()->cells[r][c].ch;
       out += ch < 0x7F ? (char)ch : '?';
     }
@@ -54,15 +54,16 @@ static void check(bool ok, const char *what, const Vt &vt) {
 
 static void wheel(const Vt &vt, bool up, int n) {
   char seq[24];
-  const int len = snprintf(seq, sizeof(seq), "\x1b[<%d;%d;%dM", up ? 64 : 65, GRID_COLS / 2, TERM_ROWS / 2);
+  const int len = snprintf(seq, sizeof(seq), "\x1b[<%d;%d;%dM", up ? 64 : 65, gridCols / 2, termRows / 2);
   for (int i = 0; i < n; i++) (void)!write(master, seq, len);
   (void)vt;
 }
 
 int main(int argc, char **argv) {
+  if (argc > 2) setFont(atoi(argv[2]));
   Vt vt(&a, &b);
   vt.setReply(reply, nullptr);
-  winsize ws{(unsigned short)TERM_ROWS, (unsigned short)GRID_COLS, 0, 0};
+  winsize ws{(unsigned short)termRows, (unsigned short)gridCols, 0, 0};
   char sock[64];
   snprintf(sock, sizeof(sock), "wio-test-%d", getpid());
   const pid_t pid = forkpty(&master, nullptr, nullptr, &ws);
@@ -98,12 +99,12 @@ int main(int argc, char **argv) {
   check(text(vt).find("typed-here") != std::string::npos, "keys reach the session", vt);
 
   if (argc > 1) {
-    static uint16_t strip[STRIP_W * STRIP_H];
+    static uint16_t strip[STRIP_W * STRIP_MAX_H];
     FILE *f = fopen(argv[1], "wb");
-    fprintf(f, "P6\n320 %d\n255\n", GRID_ROWS * STRIP_H);
-    for (int row = 0; row < GRID_ROWS; row++) {
+    fprintf(f, "P6\n320 %d\n255\n", gridRows * stripH);
+    for (int row = 0; row < gridRows; row++) {
       renderRow(vt.grid()->cells[row], -1, strip);
-      for (int y = 0; y < STRIP_H; y++) {
+      for (int y = 0; y < stripH; y++) {
         for (int x = 0; x < 320; x++) {
           const uint16_t c = strip[y * 320 + x];
           const uint8_t rgb[3] = {(uint8_t)(c >> 8 & 0xF8), (uint8_t)(c >> 3 & 0xFC), (uint8_t)(c << 3)};

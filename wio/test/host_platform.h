@@ -71,8 +71,13 @@ class HostPlatform : public Platform {
   void random(uint8_t *buf, size_t len) override {
     if (getrandom(buf, len, 0) != (ssize_t)len) abort();
   }
-  void pushStrip(int y, uint16_t *pixels) override {
-    for (int r = 0; r < 13; r++) memcpy(fb[y + r], pixels + r * 320, 640);
+  void pushStrip(int y, int height, uint16_t *pixels) override {
+    for (int r = 0; r < height; r++) memcpy(fb[y + r], pixels + r * 320, 640);
+  }
+  void clearScreen(uint16_t color) override {
+    for (auto &row : fb) {
+      for (uint16_t &px : row) px = color;
+    }
   }
   bool poll(Input &out) override {
     if (keys.empty()) return false;

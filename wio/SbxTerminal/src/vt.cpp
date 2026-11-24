@@ -3,6 +3,8 @@
 #include <stdio.h>
 #include <string.h>
 
+int gridCols = MAX_COLS, gridRows = MAX_ROWS, termRows = MAX_ROWS - 1;
+
 // A dark palette built from Claude Code's dark theme, so ANSI colours sit well beside its own.
 static const uint32_t kAnsi[16] = {
     0x2A2A2A, 0xFF6B80, 0x4EBA65, 0xFFC107, 0x7F8FF5, 0xAF87FF, 0x48B8AC, 0xD8D8D8,
@@ -27,14 +29,14 @@ static uint16_t paletteColor(int i) {
 static uint16_t dimmed(uint16_t c) { return ((c >> 1) & 0x7BEF) + ((c >> 2) & 0x39E7); }
 
 void Grid::fill(uint16_t fg, uint16_t bg) {
-  for (int r = 0; r < GRID_ROWS; r++) {
-    for (int c = 0; c < GRID_COLS; c++) cells[r][c] = Cell{' ', fg, bg, 0};
+  for (int r = 0; r < MAX_ROWS; r++) {
+    for (int c = 0; c < MAX_COLS; c++) cells[r][c] = Cell{' ', fg, bg, 0};
   }
-  dirty = 0xFFFFFFFFUL >> (32 - GRID_ROWS);
+  dirty = 0xFFFFFFFFUL >> (32 - gridRows);
 }
 
 void Grid::put(int row, int col, uint16_t ch, uint16_t fg, uint16_t bg, uint8_t flags) {
-  if (row < 0 || row >= GRID_ROWS || col < 0 || col >= GRID_COLS) return;
+  if (row < 0 || row >= gridRows || col < 0 || col >= gridCols) return;
   Cell &cell = cells[row][col];
   if (cell.ch == ch && cell.fg == fg && cell.bg == bg && cell.flags == flags) return;
   cell = Cell{ch, fg, bg, flags};
@@ -81,7 +83,7 @@ void Vt::reset() {
   row_ = col_ = 0;
   wrapPending_ = false;
   top_ = 0;
-  bottom_ = TERM_ROWS - 1;
+  bottom_ = termRows - 1;
   origin_ = insert_ = appCursor_ = mouse_ = mouseSgr_ = false;
   autowrap_ = cursorVisible_ = true;
   lineDrawing_[0] = lineDrawing_[1] = false;
@@ -92,7 +94,7 @@ void Vt::reset() {
   bg_ = VT_DEFAULT_BG;
   bold_ = dim_ = underline_ = inverse_ = hidden_ = false;
   tabs_[0] = tabs_[1] = 0;
-  for (int c = 8; c < GRID_COLS; c += 8) tabs_[c / 32] |= 1UL << (c % 32);
+  for (int c = 8; c < gridCols; c += 8) tabs_[c / 32] |= 1UL << (c % 32);
   saveCursor();
   saved_[1] = saved_[0];
 }
@@ -217,16 +219,16 @@ void Vt::byte(uint8_t b) {
 void Vt::control(uint8_t b) {
   switch (b) {
     case '\b':
-      if (col_ >= GRID_COLS) col_ = GRID_COLS - 1;
+      if (col_ >= gridCols) col_ = gridCols - 1;
       if (col_ > 0) col_--;
       wrapPending_ = false;
       break;
     case '\t': {
-      int c = col_ >= GRID_COLS ? GRID_COLS - 1 : col_;
-      for (c++; c < GRID_COLS - 1; c++) {
+      int c = col_ >= gridCols ? gridCols - 1 : col_;
+      for (c++; c < gridCols - 1; c++) {
         if (tabs_[c / 32] & (1UL << (c % 32))) break;
       }
-      col_ = c >= GRID_COLS ? GRID_COLS - 1 : c;
+      col_ = c >= gridCols ? gridCols - 1 : c;
       wrapPending_ = false;
       break;
     }
@@ -290,7 +292,7 @@ void Vt::escape(uint8_t b) {
       lineFeed();
       break;
     case 'H':
-      if (col_ < GRID_COLS) tabs_[col_ / 32] |= 1UL << (col_ % 32);
+      if (col_ < gridCols) tabs_[col_ / 32] |= 1UL << (col_ % 32);
       break;
     case 'M':
       reverseIndex();
@@ -305,9 +307,9 @@ void Vt::escape(uint8_t b) {
 
 void Vt::moveTo(int row, int col) {
   const int minRow = origin_ ? top_ : 0;
-  const int maxRow = origin_ ? bottom_ : TERM_ROWS - 1;
+  const int maxRow = origin_ ? bottom_ : termRows - 1;
   row_ = row < minRow ? minRow : row > maxRow ? maxRow : row;
-  col_ = col < 0 ? 0 : col >= GRID_COLS ? GRID_COLS - 1 : col;
+  col_ = col < 0 ? 0 : col >= gridCols ? gridCols - 1 : col;
   wrapPending_ = false;
 }
 
@@ -330,7 +332,7 @@ void Vt::csiDispatch(uint8_t final) {
   if (prefix_) return;
 
   const int n = param(0, 1);
-  const int col = col_ >= GRID_COLS ? GRID_COLS - 1 : col_;
+  const int col = col_ >= gridCols ? gridCols - 1 : col_;
   switch (final) {
     case 'A':
       row_ = row_ >= top_ ? (row_ - n < top_ ? top_ : row_ - n) : (row_ - n < 0 ? 0 : row_ - n);
@@ -339,7 +341,7 @@ void Vt::csiDispatch(uint8_t final) {
       break;
     case 'B':
     case 'e': {
-      const int limit = row_ <= bottom_ ? bottom_ : TERM_ROWS - 1;
+      const int limit = row_ <= bottom_ ? bottom_ : termRows - 1;
       row_ = row_ + n > limit ? limit : row_ + n;
       col_ = col;
       wrapPending_ = false;
@@ -347,7 +349,7 @@ void Vt::csiDispatch(uint8_t final) {
     }
     case 'C':
     case 'a':
-      col_ = col + n >= GRID_COLS ? GRID_COLS - 1 : col + n;
+      col_ = col + n >= gridCols ? gridCols - 1 : col + n;
       wrapPending_ = false;
       break;
     case 'D':
@@ -362,7 +364,7 @@ void Vt::csiDispatch(uint8_t final) {
       break;
     case 'G':
     case '`':
-      col_ = n > GRID_COLS ? GRID_COLS - 1 : n - 1;
+      col_ = n > gridCols ? gridCols - 1 : n - 1;
       wrapPending_ = false;
       break;
     case 'd':
@@ -402,7 +404,7 @@ void Vt::csiDispatch(uint8_t final) {
       insertChars(n);
       break;
     case 'X': {
-      const int end = col + n > GRID_COLS ? GRID_COLS : col + n;
+      const int end = col + n > gridCols ? gridCols : col + n;
       eraseCells(row_, col, end);
       wrapPending_ = false;
       break;
@@ -415,7 +417,7 @@ void Vt::csiDispatch(uint8_t final) {
       break;
     case 'Z':
       for (int i = 0; i < n; i++) {
-        int c = col_ >= GRID_COLS ? GRID_COLS - 1 : col_;
+        int c = col_ >= gridCols ? gridCols - 1 : col_;
         for (c--; c > 0; c--) {
           if (tabs_[c / 32] & (1UL << (c % 32))) break;
         }
@@ -424,7 +426,7 @@ void Vt::csiDispatch(uint8_t final) {
       wrapPending_ = false;
       break;
     case 'b':
-      for (int i = 0; i < n && i < GRID_COLS * TERM_ROWS; i++) print(lastChar_);
+      for (int i = 0; i < n && i < gridCols * termRows; i++) print(lastChar_);
       break;
     case 'c':
       if (param(0, 0) == 0) send("\x1b[?62;22c");
@@ -454,7 +456,7 @@ void Vt::csiDispatch(uint8_t final) {
       break;
     case 'r': {
       const int t = param(0, 1) - 1;
-      const int b = (param(1, TERM_ROWS) > TERM_ROWS ? TERM_ROWS : param(1, TERM_ROWS)) - 1;
+      const int b = (param(1, termRows) > termRows ? termRows : param(1, termRows)) - 1;
       if (t < b) {
         top_ = t;
         bottom_ = b;
@@ -520,7 +522,7 @@ void Vt::switchScreen(bool alt, bool withCursor) {
   if (target == cur_) return;
   if (alt && withCursor) saveCursor();
   cur_ = target;
-  cur_->dirty = 0xFFFFFFFFUL >> (32 - GRID_ROWS);
+  cur_->dirty = 0xFFFFFFFFUL >> (32 - gridRows);
   if (alt) eraseDisplay(2);
   else if (withCursor) restoreCursor();
   wrapPending_ = false;
@@ -533,7 +535,7 @@ void Vt::saveCursor() {
 void Vt::restoreCursor() {
   const Saved &s = saved_[cur_ == alt_];
   row_ = s.row;
-  col_ = s.col >= GRID_COLS ? GRID_COLS - 1 : s.col;
+  col_ = s.col >= gridCols ? gridCols - 1 : s.col;
   fgIndex_ = s.fgIndex;
   fg_ = s.fg;
   bg_ = s.bg;
@@ -678,7 +680,7 @@ void Vt::print(uint32_t cp) {
   if (width == 0) return;  // combining marks stay with the character before them
   lastChar_ = cp;
 
-  if (wrapPending_ || (width == 2 && col_ == GRID_COLS - 1)) {
+  if (wrapPending_ || (width == 2 && col_ == gridCols - 1)) {
     if (autowrap_) {
       col_ = 0;
       wrapPending_ = false;
@@ -687,7 +689,7 @@ void Vt::print(uint32_t cp) {
       return;
     }
   }
-  if (col_ >= GRID_COLS) col_ = GRID_COLS - 1;
+  if (col_ >= gridCols) col_ = gridCols - 1;
   if (insert_) insertChars(width);
 
   uint16_t fg = fg_;
@@ -707,18 +709,18 @@ void Vt::print(uint32_t cp) {
   // Overwriting half of a wide character blanks its other half.
   if (l[col_].flags & CELL_WIDE_TAIL && col_ > 0) l[col_ - 1].ch = ' ';
   l[col_] = Cell{ch, fg, bg, flags};
-  if (width == 2 && col_ + 1 < GRID_COLS) {
+  if (width == 2 && col_ + 1 < gridCols) {
     l[col_ + 1] = Cell{' ', fg, bg, (uint8_t)(flags | CELL_WIDE_TAIL)};
   }
   const int next = col_ + width;
-  if (next < GRID_COLS && l[next].flags & CELL_WIDE_TAIL) {
+  if (next < gridCols && l[next].flags & CELL_WIDE_TAIL) {
     l[next].ch = ' ';
     l[next].flags &= ~CELL_WIDE_TAIL;
   }
   dirtyRow(row_);
 
-  if (next >= GRID_COLS) {
-    col_ = GRID_COLS - 1;
+  if (next >= gridCols) {
+    col_ = gridCols - 1;
     wrapPending_ = autowrap_;
   } else {
     col_ = next;
@@ -726,10 +728,10 @@ void Vt::print(uint32_t cp) {
 }
 
 void Vt::lineFeed() {
-  if (col_ >= GRID_COLS) col_ = GRID_COLS - 1;
+  if (col_ >= gridCols) col_ = gridCols - 1;
   wrapPending_ = false;
   if (row_ == bottom_) scrollUp(top_, bottom_, 1);
-  else if (row_ < TERM_ROWS - 1) row_++;
+  else if (row_ < termRows - 1) row_++;
 }
 
 void Vt::reverseIndex() {
@@ -741,7 +743,7 @@ void Vt::reverseIndex() {
 void Vt::eraseCells(int row, int from, int to) {
   Cell *l = line(row);
   if (from > 0 && l[from].flags & CELL_WIDE_TAIL) l[from - 1].ch = ' ';
-  if (to < GRID_COLS && l[to].flags & CELL_WIDE_TAIL) {
+  if (to < gridCols && l[to].flags & CELL_WIDE_TAIL) {
     l[to].ch = ' ';
     l[to].flags &= ~CELL_WIDE_TAIL;
   }
@@ -753,9 +755,9 @@ void Vt::scrollUp(int top, int bottom, int n) {
   const int height = bottom - top + 1;
   if (n > height) n = height;
   if (n < height) {
-    memmove(line(top), line(top + n), sizeof(Cell) * GRID_COLS * (height - n));
+    memmove(line(top), line(top + n), sizeof(Cell) * MAX_COLS * (height - n));
   }
-  for (int r = bottom - n + 1; r <= bottom; r++) eraseCells(r, 0, GRID_COLS);
+  for (int r = bottom - n + 1; r <= bottom; r++) eraseCells(r, 0, gridCols);
   for (int r = top; r <= bottom; r++) dirtyRow(r);
 }
 
@@ -763,46 +765,46 @@ void Vt::scrollDown(int top, int bottom, int n) {
   const int height = bottom - top + 1;
   if (n > height) n = height;
   if (n < height) {
-    memmove(line(top + n), line(top), sizeof(Cell) * GRID_COLS * (height - n));
+    memmove(line(top + n), line(top), sizeof(Cell) * MAX_COLS * (height - n));
   }
-  for (int r = top; r < top + n; r++) eraseCells(r, 0, GRID_COLS);
+  for (int r = top; r < top + n; r++) eraseCells(r, 0, gridCols);
   for (int r = top; r <= bottom; r++) dirtyRow(r);
 }
 
 void Vt::eraseLine(int mode) {
-  const int col = col_ >= GRID_COLS ? GRID_COLS - 1 : col_;
-  if (mode == 0) eraseCells(row_, col, GRID_COLS);
+  const int col = col_ >= gridCols ? gridCols - 1 : col_;
+  if (mode == 0) eraseCells(row_, col, gridCols);
   else if (mode == 1) eraseCells(row_, 0, col + 1);
-  else if (mode == 2) eraseCells(row_, 0, GRID_COLS);
+  else if (mode == 2) eraseCells(row_, 0, gridCols);
   wrapPending_ = false;
 }
 
 void Vt::eraseDisplay(int mode) {
   if (mode == 0) {
     eraseLine(0);
-    for (int r = row_ + 1; r < TERM_ROWS; r++) eraseCells(r, 0, GRID_COLS);
+    for (int r = row_ + 1; r < termRows; r++) eraseCells(r, 0, gridCols);
   } else if (mode == 1) {
     eraseLine(1);
-    for (int r = 0; r < row_; r++) eraseCells(r, 0, GRID_COLS);
+    for (int r = 0; r < row_; r++) eraseCells(r, 0, gridCols);
   } else if (mode == 2 || mode == 3) {
-    for (int r = 0; r < TERM_ROWS; r++) eraseCells(r, 0, GRID_COLS);
+    for (int r = 0; r < termRows; r++) eraseCells(r, 0, gridCols);
   }
 }
 
 void Vt::insertChars(int n) {
-  const int col = col_ >= GRID_COLS ? GRID_COLS - 1 : col_;
-  if (n > GRID_COLS - col) n = GRID_COLS - col;
+  const int col = col_ >= gridCols ? gridCols - 1 : col_;
+  if (n > gridCols - col) n = gridCols - col;
   Cell *l = line(row_);
-  memmove(&l[col + n], &l[col], sizeof(Cell) * (GRID_COLS - col - n));
+  memmove(&l[col + n], &l[col], sizeof(Cell) * (gridCols - col - n));
   eraseCells(row_, col, col + n);
   wrapPending_ = false;
 }
 
 void Vt::deleteChars(int n) {
-  const int col = col_ >= GRID_COLS ? GRID_COLS - 1 : col_;
-  if (n > GRID_COLS - col) n = GRID_COLS - col;
+  const int col = col_ >= gridCols ? gridCols - 1 : col_;
+  if (n > gridCols - col) n = gridCols - col;
   Cell *l = line(row_);
-  memmove(&l[col], &l[col + n], sizeof(Cell) * (GRID_COLS - col - n));
-  eraseCells(row_, GRID_COLS - n, GRID_COLS);
+  memmove(&l[col], &l[col + n], sizeof(Cell) * (gridCols - col - n));
+  eraseCells(row_, gridCols - n, gridCols);
   wrapPending_ = false;
 }

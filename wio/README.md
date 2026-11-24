@@ -1,6 +1,6 @@
 # sbx-projects on a Wio Terminal
 
-Browse projects and sandboxes, create sandboxes, and attach to them in a 45x17 terminal, typing on
+Browse projects and sandboxes, create sandboxes, and attach to them in a terminal of up to 45x17, typing on
 a Bluetooth keyboard.
 
 ## What you need
@@ -49,6 +49,11 @@ arduino-cli compile --upload --fqbn Seeeduino:samd:seeed_wio_terminal -p <port> 
 
 The keyboard's arrows, Enter, Esc and Tab work in lists and forms. In the terminal, every key goes
 to the session, including Ctrl and Alt combinations.
+
+## Text size
+
+Choose **Settings > Text size** with left and right: Small (45x17), Medium (35x15) or Large
+(32x11). It applies at once and is remembered. Reattach to use a new size in a session.
 
 ## Limits
 

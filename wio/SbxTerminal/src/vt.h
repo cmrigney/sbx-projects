@@ -5,9 +5,10 @@
 #include <stddef.h>
 #include <stdint.h>
 
-static const int GRID_COLS = 45;
-static const int GRID_ROWS = 18;
-static const int TERM_ROWS = GRID_ROWS - 1;
+// The grid's storage fits the smallest font; the current font sets how much of it is in use.
+static const int MAX_COLS = 45;
+static const int MAX_ROWS = 18;
+extern int gridCols, gridRows, termRows;
 
 enum : uint8_t { CELL_UNDERLINE = 1, CELL_WIDE_TAIL = 2, CELL_BOLD = 4 };
 
@@ -19,7 +20,7 @@ struct __attribute__((packed)) Cell {
 };
 
 struct Grid {
-  Cell cells[GRID_ROWS][GRID_COLS];
+  Cell cells[MAX_ROWS][MAX_COLS];
   uint32_t dirty;  // one bit per row
 
   void fill(uint16_t fg, uint16_t bg);
@@ -52,7 +53,7 @@ class Vt {
 
   Grid *grid() const { return cur_; }
   int cursorRow() const { return row_; }
-  int cursorCol() const { return col_ >= GRID_COLS ? GRID_COLS - 1 : col_; }
+  int cursorCol() const { return col_ >= gridCols ? gridCols - 1 : col_; }
   bool cursorVisible() const { return cursorVisible_; }
   bool appCursor() const { return appCursor_; }
   bool mouseOn() const { return mouse_; }
@@ -106,7 +107,7 @@ class Vt {
 
   int row_ = 0, col_ = 0;
   bool wrapPending_ = false;
-  int top_ = 0, bottom_ = TERM_ROWS - 1;
+  int top_ = 0, bottom_ = termRows - 1;
   bool origin_ = false, autowrap_ = true, insert_ = false;
   bool cursorVisible_ = true, appCursor_ = false;
   bool mouse_ = false, mouseSgr_ = false;

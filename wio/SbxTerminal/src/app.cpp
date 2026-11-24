@@ -19,7 +19,7 @@ static const uint16_t C_WARN = rgb565(0xFF, 0xC1, 0x07);
 static const uint16_t C_FAIL = rgb565(0xFF, 0x6B, 0x80);
 
 static const int LIST_TOP = 1;
-static const int LIST_BOTTOM = GRID_ROWS - 2;  // the last row holds the key hints
+#define LIST_BOTTOM (gridRows - 2)  // the last row holds the key hints
 static const uint32_t FLUSH_MS = 40;
 static const uint32_t BLINK_MS = 500;
 static const int PAGE_NOTCHES = 5;
@@ -56,7 +56,22 @@ void App::begin() {
     config_.port = 7443;
   }
   if (config_.port == 0) config_.port = 7443;
+  if (config_.fontSize >= fontCount()) config_.fontSize = 0;
+  applyFont();
   startNetwork();
+}
+
+void App::applyFont() {
+  setFont(config_.fontSize);
+  vt_.reset();
+  p_.clearScreen(C_BG);
+}
+
+void App::changeFont(int delta) {
+  config_.fontSize = (config_.fontSize + delta + fontCount()) % fontCount();
+  applyFont();
+  p_.saveConfig(config_);
+  needsDraw_ = true;
 }
 
 void App::startNetwork() {
@@ -300,7 +315,7 @@ void App::buildNewForm() {
   const bool pr = sourceIndex_ == 1;
   add(Field{F_CHOICE, FIELD_SOURCE, 0, "From", nullptr, 0, false, pr ? "Pull request" : "New branch", false});
   add(Field{F_TEXT, FIELD_VALUE, 0, pr ? "PR" : "Branch", value_, sizeof(value_), false, nullptr, false});
-  if (!pr) add(Field{F_TOGGLE, FIELD_CLONE, 0, "Private clone", nullptr, 0, clone_, nullptr, false});
+  if (!pr) add(Field{F_TOGGLE, FIELD_CLONE, 0, "Clone", nullptr, 0, clone_, "private", false});
   const AgentOption &agent = options_.agents[agentIndex_];
   add(Field{F_CHOICE, FIELD_AGENT, 0, "Agent", nullptr, 0, false, agent.label, options_.agentCount < 2});
   if (agent.modelCount > 0) {
@@ -314,7 +329,7 @@ void App::buildNewForm() {
   }
   for (int i = 0; i < options_.mcpCount; i++) {
     const McpOption &m = options_.mcps[i];
-    add(Field{F_TOGGLE, FIELD_MCP, (uint8_t)i, m.ready ? "MCP" : "MCP (setup)", nullptr, 0, m.picked, m.name, !m.ready && !m.picked});
+    add(Field{F_TOGGLE, FIELD_MCP, (uint8_t)i, m.ready ? "MCP" : "MCP*", nullptr, 0, m.picked, m.name, !m.ready && !m.picked});
   }
   if (options_.mcpError[0]) add(Field{F_NOTE, FIELD_NOTE, 0, options_.mcpError, nullptr, 0, false, nullptr, true});
   add(Field{F_BUTTON, FIELD_CREATE, 0, "Create sandbox", nullptr, 0, false, nullptr, false});
@@ -439,7 +454,7 @@ void App::attach(const char *name, bool shell) {
   termShell_ = shell;
   busy(shell ? "Opening a shell" : "Attaching");
   char suffix[48], path[128];
-  snprintf(suffix, sizeof(suffix), "/terminal?cols=%d&rows=%d%s", GRID_COLS, TERM_ROWS, shell ? "&shell=1" : "");
+  snprintf(suffix, sizeof(suffix), "/terminal?cols=%d&rows=%d%s", gridCols, termRows, shell ? "&shell=1" : "");
   sandboxPath(path, sizeof(path), name, suffix);
   if (!ws_.open(config_, path)) {
     snprintf(closedText_, sizeof(closedText_), "%s", ws_.error());
@@ -500,7 +515,7 @@ void App::wheel(bool up, int notches) {
   if (!vt_.mouseOn()) return;
   char seq[24];
   const int button = up ? 64 : 65;
-  const int col = GRID_COLS / 2, row = TERM_ROWS / 2;
+  const int col = gridCols / 2, row = termRows / 2;
   int len;
   if (vt_.mouseSgr()) {
     len = snprintf(seq, sizeof(seq), "\x1b[<%d;%d;%dM", button, col, row);
@@ -555,17 +570,17 @@ void App::handleTerminal(const Input &in) {
 
 void App::drawTerminalBar() {
   Grid *g = vt_.grid();
-  char left[GRID_COLS + 1];
+  char left[MAX_COLS + 1];
   snprintf(left, sizeof(left), " %s%s", termName_, termShell_ ? " (shell)" : "");
   const KeyboardState kb = p_.keyboard();
   const char *right = kb == KB_LOST ? "KB LOST: B restarts " : scrollDepth_ > 0 ? "SCROLL: press=live " : "C detach ";
   const int rightLen = strlen(right);
   const uint16_t bg = kb == KB_LOST ? 0x8000 : C_PANEL;
   const uint16_t fg = scrollDepth_ > 0 ? C_WARN : C_MUTED;
-  for (int c = 0; c < GRID_COLS; c++) g->put(0, c, ' ', C_TEXT, bg);
-  const int leftMax = GRID_COLS - rightLen - 1;
+  for (int c = 0; c < gridCols; c++) g->put(0, c, ' ', C_TEXT, bg);
+  const int leftMax = gridCols - rightLen - 1;
   for (int c = 0; c < leftMax && left[c]; c++) g->put(0, c, (uint8_t)left[c], C_ACCENT, bg);
-  for (int c = 0; c < rightLen; c++) g->put(0, GRID_COLS - rightLen + c, (uint8_t)right[c], kb == KB_LOST ? C_TEXT : fg, bg);
+  for (int c = 0; c < rightLen; c++) g->put(0, gridCols - rightLen + c, (uint8_t)right[c], kb == KB_LOST ? C_TEXT : fg, bg);
 }
 
 // ---------------------------------------------------------------------------
@@ -649,7 +664,13 @@ void App::handle(const Input &in) {
       handleList(in, 3);
       break;
     case V_SETTINGS:
-      handleList(in, 4);
+      if (sel_ == 0 && (in.key == KEY_LEFT || in.key == SW_LEFT)) {
+        changeFont(-1);
+      } else if (sel_ == 0 && (in.key == KEY_RIGHT || in.key == SW_RIGHT || isSelect(in.key))) {
+        changeFont(1);
+      } else {
+        handleList(in, 5);
+      }
       break;
     case V_WIFI_PASS:
     case V_SERVER:
@@ -791,11 +812,11 @@ void App::activate() {
       break;
     }
     case V_SETTINGS:
-      if (sel_ == 0) {
+      if (sel_ == 1) {
         scanWifi();
-      } else if (sel_ == 1) {
-        startServerForm();
       } else if (sel_ == 2) {
+        startServerForm();
+      } else if (sel_ == 3) {
         p_.forgetKeyboards();
         p_.restart();
       } else {
@@ -930,8 +951,8 @@ void App::go(View v) {
 }
 
 void App::clearUi() {
-  for (int r = 0; r < GRID_ROWS; r++) {
-    for (int c = 0; c < GRID_COLS; c++) gridA_.put(r, c, ' ', C_TEXT, C_BG);
+  for (int r = 0; r < gridRows; r++) {
+    for (int c = 0; c < gridCols; c++) gridA_.put(r, c, ' ', C_TEXT, C_BG);
   }
 }
 
@@ -939,7 +960,7 @@ void App::clearUi() {
 int App::text(int row, int col, const char *s, uint16_t fg, uint16_t bg, int maxCols) {
   const uint8_t *u = (const uint8_t *)s;
   int used = 0;
-  while (*u && used < maxCols && col + used < GRID_COLS) {
+  while (*u && used < maxCols && col + used < gridCols) {
     uint32_t cp = *u++;
     int more = cp >= 0xF0 ? 3 : cp >= 0xE0 ? 2 : cp >= 0xC0 ? 1 : 0;
     if (more) {
@@ -957,24 +978,25 @@ int App::text(int row, int col, const char *s, uint16_t fg, uint16_t bg, int max
 }
 
 void App::header(const char *title) {
-  for (int c = 0; c < GRID_COLS; c++) gridA_.put(0, c, ' ', C_TEXT, C_PANEL);
+  for (int c = 0; c < gridCols; c++) gridA_.put(0, c, ' ', C_TEXT, C_PANEL);
   const KeyboardState kb = p_.keyboard();
   const char *status = kb == KB_CONNECTED ? "KB" : kb == KB_LOST ? "KB LOST" : "no KB";
   const int len = strlen(status);
-  text(0, 1, title, C_ACCENT, C_PANEL, GRID_COLS - len - 3);
-  text(0, GRID_COLS - len - 1, status, kb == KB_CONNECTED ? C_OK : C_WARN, C_PANEL, len);
+  text(0, 1, title, C_ACCENT, C_PANEL, gridCols - len - 3);
+  text(0, gridCols - len - 1, status, kb == KB_CONNECTED ? C_OK : C_WARN, C_PANEL, len);
 }
 
 void App::footer(const char *hints) {
-  for (int c = 0; c < GRID_COLS; c++) gridA_.put(GRID_ROWS - 1, c, ' ', C_MUTED, C_PANEL);
-  text(GRID_ROWS - 1, 1, hints, C_MUTED, C_PANEL, GRID_COLS - 2);
+  for (int c = 0; c < gridCols; c++) gridA_.put(gridRows - 1, c, ' ', C_MUTED, C_PANEL);
+  text(gridRows - 1, 1, hints, C_MUTED, C_PANEL, gridCols - 2);
 }
 
 void App::busy(const char *message) {
   if (view_ == V_TERMINAL) view_ = V_NOTICE;
   clearUi();
   header("sbx-projects");
-  text(GRID_ROWS / 2, (GRID_COLS - (int)strlen(message)) / 2, message, C_TEXT, C_BG, GRID_COLS);
+  const int len = strlen(message);
+  text(gridRows / 2, len < gridCols ? (gridCols - len) / 2 : 0, message, C_TEXT, C_BG, gridCols);
   flush();
 }
 
@@ -1000,7 +1022,7 @@ void App::flush() {
   for (int r = 0; bits; r++, bits >>= 1) {
     if (!(bits & 1)) continue;
     renderRow(g->cells[r], r == cursorRow && blinkOn_ ? cursorCol : -1, strip_);
-    p_.pushStrip(SCREEN_TOP + r * STRIP_H, strip_);
+    p_.pushStrip(screenTop + r * stripH, stripH, strip_);
   }
 }
 
@@ -1033,7 +1055,7 @@ void App::drawWifi() {
   header("Choose Wi-Fi");
   footer("Enter join  A rescan");
   if (networkCount_ == 0) {
-    text(3, 2, "No networks found. Press A to look again.", C_MUTED, C_BG, GRID_COLS - 4);
+    text(3, 2, "No networks found. Press A to look again.", C_MUTED, C_BG, gridCols - 4);
     return;
   }
   const int rows = LIST_BOTTOM - LIST_TOP;
@@ -1042,11 +1064,11 @@ void App::drawWifi() {
     const int row = LIST_TOP + 1 + i - top_;
     const bool on = i == sel_;
     const uint16_t bg = on ? C_SELECT : C_BG;
-    for (int c = 0; c < GRID_COLS; c++) gridA_.put(row, c, ' ', C_TEXT, bg);
-    text(row, 1, networks_[i].ssid, C_TEXT, bg, GRID_COLS - 11);
+    for (int c = 0; c < gridCols; c++) gridA_.put(row, c, ' ', C_TEXT, bg);
+    text(row, 1, networks_[i].ssid, C_TEXT, bg, gridCols - 11);
     char right[16];
     snprintf(right, sizeof(right), "%s%4d", networks_[i].open ? "open" : "", networks_[i].rssi);
-    text(row, GRID_COLS - 1 - strlen(right), right, C_MUTED, bg, 12);
+    text(row, gridCols - 1 - strlen(right), right, C_MUTED, bg, 12);
   }
 }
 
@@ -1061,19 +1083,19 @@ void App::drawProjects() {
     const int row = LIST_TOP + 1 + i - top_;
     const bool on = i == sel_;
     const uint16_t bg = on ? C_SELECT : C_BG;
-    for (int c = 0; c < GRID_COLS; c++) gridA_.put(row, c, ' ', C_TEXT, bg);
+    for (int c = 0; c < gridCols; c++) gridA_.put(row, c, ' ', C_TEXT, bg);
     if (i == 0) {
       text(row, 1, "All sandboxes", C_ACCENT, bg, 40);
       char n[8];
       snprintf(n, sizeof(n), "%d", sandboxCount_);
-      text(row, GRID_COLS - 1 - strlen(n), n, C_MUTED, bg, 6);
+      text(row, gridCols - 1 - strlen(n), n, C_MUTED, bg, 6);
     } else if (i <= projectCount_) {
       const ProjectInfo &pr = projects_[i - 1];
-      const int after = text(row, 1, pr.name, C_TEXT, bg, 30);
-      text(row, after + 1, pr.branch, C_MUTED, bg, GRID_COLS - after - 6);
+      const int after = text(row, 1, pr.name, C_TEXT, bg, gridCols - 6);
+      text(row, after + 1, pr.branch, C_MUTED, bg, gridCols - after - 6);
       char n[8];
       snprintf(n, sizeof(n), "%d", pr.sandboxes);
-      text(row, GRID_COLS - 1 - strlen(n), n, C_MUTED, bg, 6);
+      text(row, gridCols - 1 - strlen(n), n, C_MUTED, bg, 6);
     } else if (i == projectCount_ + 1) {
       text(row, 1, "+ New sandbox", C_OK, bg, 40);
     } else {
@@ -1085,10 +1107,10 @@ void App::drawProjects() {
 void App::drawSandboxes() {
   const ProjectInfo *pr = filterProject_ >= 0 ? projectById(filterProject_) : nullptr;
   header(pr ? pr->name : "All sandboxes");
-  footer("Enter open  C back  B new  A refresh");
+  footer("Enter  C back  B new  A reload");
   const int count = visibleSandboxCount();
   if (count == 0) {
-    text(3, 2, "No sandboxes yet. Press B to make one.", C_MUTED, C_BG, GRID_COLS - 4);
+    text(3, 2, "No sandboxes yet. Press B to make one.", C_MUTED, C_BG, gridCols - 4);
     return;
   }
   if (sel_ >= count) sel_ = count - 1;
@@ -1099,15 +1121,15 @@ void App::drawSandboxes() {
     const int row = LIST_TOP + 1 + (i - top_) * 2;
     const bool on = i == sel_;
     const uint16_t bg = on ? C_SELECT : C_BG;
-    for (int c = 0; c < GRID_COLS; c++) {
+    for (int c = 0; c < gridCols; c++) {
       gridA_.put(row, c, ' ', C_TEXT, bg);
       gridA_.put(row + 1, c, ' ', C_TEXT, bg);
     }
     gridA_.put(row, 1, s.running ? 0x25CF : 0x25CB, stateColor(s), bg);
-    text(row, 3, s.title, C_TEXT, bg, GRID_COLS - 7);
-    if (s.unread) gridA_.put(row, GRID_COLS - 2, 0x2022, C_ACCENT, bg);
-    const int after = text(row + 1, 3, s.status, stateColor(s), bg, 24);
-    text(row + 1, after + 2, s.branch, C_MUTED, bg, GRID_COLS - after - 3);
+    text(row, 3, s.title, C_TEXT, bg, gridCols - 7);
+    if (s.unread) gridA_.put(row, gridCols - 2, 0x2022, C_ACCENT, bg);
+    const int after = text(row + 1, 3, s.status, stateColor(s), bg, gridCols / 2);
+    text(row + 1, after + 2, s.branch, C_MUTED, bg, gridCols - after - 3);
   }
 }
 
@@ -1116,17 +1138,16 @@ void App::drawDetail() {
   if (!s) {
     header(detailName_);
     footer("C back");
-    text(3, 2, "Starting. Press A to refresh.", C_MUTED, C_BG, GRID_COLS - 4);
+    text(3, 2, "Starting. Press A to refresh.", C_MUTED, C_BG, gridCols - 4);
     return;
   }
   header(s->name);
-  footer("Enter choose  C back  A refresh");
-  int row = 2;
-  text(row++, 1, s->title, C_TEXT, C_BG, GRID_COLS - 2);
-  row++;
+  footer("Enter  C back  A refresh");
+  int row = 1;
+  text(row++, 1, s->title, C_TEXT, C_BG, gridCols - 2);
   const auto line = [&](const char *label, const char *value, uint16_t color) {
     text(row, 1, label, C_MUTED, C_BG, 8);
-    text(row, 9, value, color, C_BG, GRID_COLS - 10);
+    text(row, 9, value, color, C_BG, gridCols - 10);
     row++;
   };
   line("Status", s->status, stateColor(*s));
@@ -1143,39 +1164,39 @@ void App::drawDetail() {
   for (int i = 0; i < 3; i++, row++) {
     const bool on = i == sel_;
     const uint16_t bg = on ? C_SELECT : C_BG;
-    for (int c = 0; c < GRID_COLS; c++) gridA_.put(row, c, ' ', C_TEXT, bg);
-    text(row, 2, actions[i], i == 0 ? C_ACCENT : C_TEXT, bg, GRID_COLS - 4);
+    for (int c = 0; c < gridCols; c++) gridA_.put(row, c, ' ', C_TEXT, bg);
+    text(row, 2, actions[i], i == 0 ? C_ACCENT : C_TEXT, bg, gridCols - 4);
   }
 }
 
 void App::drawForm(const char *title) {
   header(title);
   const Field &focused = fields_[focus_];
-  footer(focused.type == F_TEXT ? "Type  Up/Down field  Esc back"
-         : focused.type == F_CHOICE ? "Left/Right change  Up/Down field  Esc back"
-         : focused.type == F_TOGGLE ? "Enter toggle  Up/Down field  Esc back"
-                                    : "Enter confirm  Up/Down field  Esc back");
+  footer(focused.type == F_TEXT ? "Type  Up/Down  Esc back"
+         : focused.type == F_CHOICE ? "L/R change  Up/Down  Esc"
+         : focused.type == F_TOGGLE ? "Enter toggle  Up/Down  Esc"
+                                    : "Enter confirm  Up/Down  Esc");
   int bottom = LIST_BOTTOM;
   if (formError_[0]) {
     bottom--;
-    text(LIST_BOTTOM, 1, formError_, C_FAIL, C_BG, GRID_COLS - 2);
+    text(LIST_BOTTOM, 1, formError_, C_FAIL, C_BG, gridCols - 2);
   }
   const int rows = bottom - LIST_TOP;
   keepVisible(focus_, formTop_, rows);
-  const int labelW = 14;
+  const int labelW = 10;
   for (int i = formTop_; i < fieldCount_ && i < formTop_ + rows; i++) {
     const Field &f = fields_[i];
     const int row = LIST_TOP + i - formTop_;
     const bool on = i == focus_;
     const uint16_t bg = on ? C_SELECT : C_BG;
-    for (int c = 0; c < GRID_COLS; c++) gridA_.put(row, c, ' ', C_TEXT, bg);
+    for (int c = 0; c < gridCols; c++) gridA_.put(row, c, ' ', C_TEXT, bg);
     if (f.type == F_NOTE) {
-      text(row, 1, f.label, C_WARN, bg, GRID_COLS - 2);
+      text(row, 1, f.label, C_WARN, bg, gridCols - 2);
     } else if (f.type == F_BUTTON) {
-      text(row, labelW + 1, f.label, C_ACCENT, bg, GRID_COLS - labelW - 2);
+      text(row, labelW + 1, f.label, C_ACCENT, bg, gridCols - labelW - 2);
     } else {
       text(row, 1, f.label, on ? C_TEXT : C_MUTED, bg, labelW - 1);
-      const int x = labelW + 1, w = GRID_COLS - x - 1;
+      const int x = labelW + 1, w = gridCols - x - 1;
       if (f.type == F_TEXT) {
         const bool secret = f.id == FIELD_PASS;
         const int len = strlen(f.text);
@@ -1189,7 +1210,7 @@ void App::drawForm(const char *title) {
         }
       } else if (f.type == F_TOGGLE) {
         const int after = text(row, x, f.on ? "[x]" : "[ ]", f.on ? C_OK : C_MUTED, bg, 3);
-        if (f.value) text(row, after + 1, f.value, f.disabled ? C_MUTED : C_TEXT, bg, GRID_COLS - after - 2);
+        if (f.value) text(row, after + 1, f.value, f.disabled ? C_MUTED : C_TEXT, bg, gridCols - after - 2);
       } else {
         char value[48];
         snprintf(value, sizeof(value), f.disabled ? "%s" : "< %s >", f.value);
@@ -1202,18 +1223,17 @@ void App::drawForm(const char *title) {
 void App::drawConfirm() {
   header("Check the certificate");
   footer("Enter it matches  Esc cancel");
-  text(3, 2, "Does the Mac's terminal show this?", C_TEXT, C_BG, GRID_COLS - 4);
+  int row = paragraph(1, "Does the Mac's terminal show this?", C_TEXT);
+  const int left = (gridCols - 23) / 2;
   char hex[3];
   for (int i = 0; i < 16; i++) {
     snprintf(hex, sizeof(hex), "%02X", pendingFp_[i]);
-    const int row = 5 + i / 8 * 2;
-    const int col = 10 + (i % 8) * 3;
-    text(row, col, hex, C_ACCENT, C_BG, 2);
-    if (i != 15) text(row, col + 2, ":", C_MUTED, C_BG, 1);
+    const int col = left + (i % 8) * 3;
+    text(row + i / 8, col, hex, C_ACCENT, C_BG, 2);
+    if (i != 15) text(row + i / 8, col + 2, ":", C_MUTED, C_BG, 1);
   }
-  text(9, 2, "It's on the line starting \"Certificate\".", C_MUTED, C_BG, GRID_COLS - 4);
-  text(11, 2, "If not, someone may be intercepting", C_WARN, C_BG, GRID_COLS - 4);
-  text(12, 2, "this connection. Don't continue.", C_WARN, C_BG, GRID_COLS - 4);
+  row = paragraph(row + 2, "It's on the line starting \"Certificate\".", C_MUTED);
+  paragraph(row, "If not, someone may be intercepting this connection. Don't continue.", C_WARN);
 }
 
 static int wrapped(const char *s, int maxCols, int &offset) {
@@ -1224,52 +1244,50 @@ static int wrapped(const char *s, int maxCols, int &offset) {
   return cut > 0 ? cut : maxCols;
 }
 
+// Draws wrapped text and returns the row after it.
+int App::paragraph(int row, const char *s, uint16_t color) {
+  int offset = 0;
+  const int total = strlen(s);
+  char line[MAX_COLS + 1];
+  while (offset < total && row < gridRows - 1) {
+    const int n = wrapped(s, gridCols - 4, offset);
+    memcpy(line, s + offset, n);
+    line[n] = 0;
+    text(row++, 2, line, color, C_BG, gridCols - 4);
+    offset += n;
+    while (s[offset] == ' ') offset++;
+  }
+  return row;
+}
+
 void App::drawClosed() {
   header(termName_);
   footer(canReattach_ ? "Enter attach again  Esc back" : "Enter back");
-  int offset = 0, row = 6;
-  const int total = strlen(closedText_);
-  char line[GRID_COLS + 1];
-  while (offset < total && row < GRID_ROWS - 1) {
-    const int n = wrapped(closedText_, GRID_COLS - 4, offset);
-    memcpy(line, closedText_ + offset, n);
-    line[n] = 0;
-    text(row++, 2, line, C_TEXT, C_BG, GRID_COLS - 4);
-    offset += n;
-    while (closedText_[offset] == ' ') offset++;
-  }
+  paragraph(gridRows / 3, closedText_, C_TEXT);
 }
 
 void App::drawSettings() {
   header("Settings");
-  footer("Enter choose  C back");
-  const char *items[4] = {"Change Wi-Fi", "Pair with a Mac", "Forget keyboards and restart", "Restart"};
-  for (int i = 0; i < 4; i++) {
-    const int row = LIST_TOP + 1 + i;
+  footer(sel_ == 0 ? "L/R change size  C back" : "Enter choose  C back");
+  char size[32];
+  snprintf(size, sizeof(size), "Text size < %s %dx%d >", fontName(config_.fontSize), gridCols, termRows);
+  const char *items[5] = {size, "Change Wi-Fi", "Pair with a Mac", "Forget keyboards", "Restart"};
+  for (int i = 0; i < 5; i++) {
+    const int row = LIST_TOP + i;
     const bool on = i == sel_;
     const uint16_t bg = on ? C_SELECT : C_BG;
-    for (int c = 0; c < GRID_COLS; c++) gridA_.put(row, c, ' ', C_TEXT, bg);
-    text(row, 2, items[i], C_TEXT, bg, GRID_COLS - 4);
+    for (int c = 0; c < gridCols; c++) gridA_.put(row, c, ' ', C_TEXT, bg);
+    text(row, 2, items[i], C_TEXT, bg, gridCols - 4);
   }
-  char line[GRID_COLS + 1];
+  char line[MAX_COLS + 1];
   snprintf(line, sizeof(line), "Wi-Fi  %s", config_.ssid);
-  text(8, 2, line, C_MUTED, C_BG, GRID_COLS - 4);
+  text(LIST_TOP + 6, 2, line, C_MUTED, C_BG, gridCols - 4);
   snprintf(line, sizeof(line), "Mac    %s:%u", config_.host, (unsigned)config_.port);
-  text(9, 2, line, C_MUTED, C_BG, GRID_COLS - 4);
+  text(LIST_TOP + 7, 2, line, C_MUTED, C_BG, gridCols - 4);
 }
 
 void App::drawNotice() {
   header("sbx-projects");
   footer("Enter continue");
-  int offset = 0, row = 6;
-  const int total = strlen(noticeText_);
-  char line[GRID_COLS + 1];
-  while (offset < total && row < GRID_ROWS - 1) {
-    const int n = wrapped(noticeText_, GRID_COLS - 4, offset);
-    memcpy(line, noticeText_ + offset, n);
-    line[n] = 0;
-    text(row++, 2, line, C_TEXT, C_BG, GRID_COLS - 4);
-    offset += n;
-    while (noticeText_[offset] == ' ') offset++;
-  }
+  paragraph(gridRows / 3, noticeText_, C_TEXT);
 }

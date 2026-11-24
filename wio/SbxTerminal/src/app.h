@@ -60,6 +60,9 @@ class App {
   int text(int row, int col, const char *s, uint16_t fg, uint16_t bg, int maxCols);
   void busy(const char *message);
   void notice(const char *message, View back);
+  int paragraph(int row, const char *s, uint16_t color);
+  void applyFont();
+  void changeFont(int delta);
 
   void handle(const Input &in);
   void handleList(const Input &in, int count);
@@ -117,7 +120,7 @@ class App {
   WebSocket ws_;
   Grid gridA_, gridB_;
   Vt vt_;
-  uint16_t strip_[STRIP_W * STRIP_H];
+  uint16_t strip_[STRIP_W * STRIP_MAX_H];
 
   View view_ = V_NOTICE, noticeBack_ = V_PROJECTS;
   bool needsDraw_ = true;

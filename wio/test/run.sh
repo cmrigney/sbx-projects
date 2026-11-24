@@ -49,5 +49,7 @@ g++ -std=gnu++14 -O1 -g -Wall "$here/adv_test.cpp" -o "$work/adv_test"
 echo "--- end-to-end"
 "$work/e2e" 127.0.0.1 "$port" "$code" "$fp" "$out"
 echo "--- tmux"
-"$work/tmux_test" "$out/10-tmux.ppm"
+for font in 0 1 2; do
+  "$work/tmux_test" "$out/10-tmux-$font.ppm" "$font"
+done
 echo "Screens: $out"

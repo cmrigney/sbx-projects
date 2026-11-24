@@ -63,6 +63,7 @@ struct Config {
   uint8_t fingerprint[32];
   char token[65];
   bool paired;
+  uint8_t fontSize;  // added later: settings saved before it have none
 };
 
 struct WifiNetwork {
@@ -80,8 +81,9 @@ class Platform {
   virtual void sleep(uint32_t ms) = 0;
   virtual void random(uint8_t *buf, size_t len) = 0;
 
-  // Draws a 320x13 strip at pixel row y. It may change the buffer.
-  virtual void pushStrip(int y, uint16_t *pixels) = 0;
+  // Draws a 320-pixel-wide strip at pixel row y. It may change the buffer.
+  virtual void pushStrip(int y, int height, uint16_t *pixels) = 0;
+  virtual void clearScreen(uint16_t color) = 0;
   virtual bool poll(Input &out) = 0;
 
   virtual Transport &transport() = 0;
